@@ -6,7 +6,6 @@ export default function AmigosScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Amigos Page</Text>
       {activity && <Text style={styles.text}>Activity: {activity}</Text>}
     </View>
   );
