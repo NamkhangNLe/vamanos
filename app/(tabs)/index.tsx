@@ -1,20 +1,36 @@
+import { Session } from '@supabase/supabase-js';
 import { Image } from 'expo-image';
-import { Link, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { supabase } from '../../lib/supabase';
 
 const PlaceholderImage = require('@/assets/images/buzz.png');
 
 export default function Index() {
   const [activity, setActivity] = useState('');
+  const [session, setSession] = useState<Session | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (!session) {
+        router.push('/auth'); // Redirect to auth screen if not logged in
+      }
+    });
+  }, []);
+
+  if (!session) {
+    return null; // Optionally render a loading state
+  }
 
   return (
     <View style={styles.container}>
-       <View style={styles.imageContainer}>
+      <View style={styles.imageContainer}>
         <Image source={PlaceholderImage} style={styles.image} />
       </View>
-      <View style = {styles.footerContainer}>
+      <View style={styles.footerContainer}>
         <TextInput
           style={styles.textbox}
           placeholder="Enter text here"
@@ -24,7 +40,7 @@ export default function Index() {
         />
       </View>
       <View style={styles.footerContainer}>
-      <Pressable
+        <Pressable
           style={styles.buttonContainer}
           onPress={() => router.push({ pathname: '/amigos', params: { activity } })}
         >
@@ -33,7 +49,6 @@ export default function Index() {
           </Link>
         </Pressable>
       </View>
-      
     </View>
   );
 }
