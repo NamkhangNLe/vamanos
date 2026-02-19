@@ -1,54 +1,156 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Session } from '@supabase/supabase-js';
-import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { supabase } from '../../lib/supabase';
 
-const PlaceholderImage = require('@/assets/images/buzz.png');
-
 export default function Index() {
-  const [activity, setActivity] = useState('');
   const [session, setSession] = useState<Session | null>(null);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newActivityTitle, setNewActivityTitle] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (!session) {
-        router.push('/auth'); // Redirect to auth screen if not logged in
+        router.replace('/auth');
+      } else {
+        fetchActivities();
       }
     });
   }, []);
 
-  if (!session) {
-    return null; // Optionally render a loading state
+  async function fetchActivities() {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('activities')
+        .select(`
+          *,
+          creator:profiles!creator_id(username, avatar_url),
+          crew:crews(name)
+        `)
+        .order('scheduled_at', { ascending: true });
+
+      if (error) throw error;
+      setActivities(data || []);
+    } catch (error) {
+      console.error('Error fetching activities:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateActivity() {
+    if (!newActivityTitle.trim() || !session?.user) return;
+
+    try {
+      setIsCreating(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      // Simple logic for MVP: Assign to first crew user belongs to
+      const { data: crewData } = await supabase
+        .from('crew_members')
+        .select('crew_id')
+        .eq('user_id', session.user.id)
+        .limit(1)
+        .single();
+
+      if (!crewData) {
+        Alert.alert('No Crew found', 'You need to be in a crew to post activities.');
+        return;
+      }
+
+      const { error } = await supabase.from('activities').insert({
+        title: newActivityTitle,
+        creator_id: session.user.id,
+        crew_id: crewData.crew_id,
+        scheduled_at: new Date(Date.now() + 3600000).toISOString(), // Sample: In 1 hour
+      });
+
+      if (error) throw error;
+
+      setNewActivityTitle('');
+      fetchActivities();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create activity');
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  const renderActivity = ({ item }: { item: any }) => (
+    <TouchableOpacity
+      style={styles.activityCard}
+      onPress={() => router.push({ pathname: '/amigos', params: { activityId: item.id } })}
+    >
+      <View style={styles.activityHeader}>
+        <Text style={styles.activityTitle}>{item.title}</Text>
+        <Text style={styles.activityTag}>{item.crew?.name || 'Local'}</Text>
+      </View>
+      <View style={styles.activityFooter}>
+        <Text style={styles.activityInfo}>
+          By {item.creator?.username || 'Someone'} • {new Date(item.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color="#aaa" />
+      </View>
+    </TouchableOpacity>
+  );
+
+  if (loading && activities.length === 0) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#ffd33d" />
+      </View>
+    );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.imageContainer}>
-        <Image source={PlaceholderImage} style={styles.image} />
-      </View>
-      <View style={styles.footerContainer}>
+      <View style={styles.inputSection}>
         <TextInput
-          style={styles.textbox}
-          placeholder="Enter text here"
-          placeholderTextColor="#aaa"
-          value={activity}
-          onChangeText={setActivity}
+          style={styles.input}
+          placeholder="🏐 What's the plan?"
+          placeholderTextColor="#666"
+          value={newActivityTitle}
+          onChangeText={setNewActivityTitle}
         />
-      </View>
-      <View style={styles.footerContainer}>
-        <Pressable
-          style={styles.buttonContainer}
-          onPress={() => router.push({ pathname: '/amigos', params: { activity } })}
+        <TouchableOpacity
+          style={[styles.vamanosButton, !newActivityTitle.trim() && styles.disabledButton]}
+          onPress={handleCreateActivity}
+          disabled={!newActivityTitle.trim() || isCreating}
         >
-          <Link href="/amigos" style={styles.buttonLabel}>
-            Vamanos!
-          </Link>
-        </Pressable>
+          <Text style={styles.buttonText}>{isCreating ? '...' : 'Vámonos!'}</Text>
+        </TouchableOpacity>
       </View>
+
+      <FlatList
+        data={activities}
+        keyExtractor={(item) => item.id}
+        renderItem={renderActivity}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>No activities yet. Be the spark! 🔥</Text>
+          </View>
+        }
+        onRefresh={fetchActivities}
+        refreshing={loading}
+      />
     </View>
   );
 }
@@ -56,44 +158,95 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#25292e',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#121212',
   },
-  imageContainer: {
+  centered: {
+    flex: 1,
+    backgroundColor: '#121212',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inputSection: {
+    padding: 20,
+    backgroundColor: '#1e1e1e',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  input: {
+    flex: 1,
+    height: 50,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    color: '#fff',
+    fontSize: 16,
+  },
+  vamanosButton: {
+    backgroundColor: '#ffd33d',
+    paddingHorizontal: 20,
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  disabledButton: {
+    backgroundColor: '#444',
+  },
+  buttonText: {
+    color: '#000',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  listContent: {
+    padding: 20,
+  },
+  activityCard: {
+    backgroundColor: '#1e1e1e',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  activityTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
     flex: 1,
   },
-  image: {
-    width: 320,
-    height: 440,
-    borderRadius: 18,
+  activityTag: {
+    backgroundColor: '#2a2a2a',
+    color: '#ffd33d',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    fontSize: 12,
+    overflow: 'hidden',
   },
-  footerContainer: {
-    flex: 1 / 3,
+  activityFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  textbox: {
-    width: 200,
-    height: 40,
-    marginBottom: 20,
-    paddingHorizontal: 10,
-    backgroundColor: '#fff',
-    borderRadius: 5,
-    color: '#25292e',
+  activityInfo: {
+    color: '#aaa',
+    fontSize: 14,
   },
-  buttonContainer: {
-    width: 200,
-    height: 68,
-    marginHorizontal: 20,
+  emptyState: {
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 3,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    marginTop: 100,
   },
-  buttonLabel: {
-    color: '#25292e',
+  emptyText: {
+    color: '#666',
     fontSize: 16,
-    textAlign: 'center',
   },
 });
