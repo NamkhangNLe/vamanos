@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -96,6 +97,7 @@ export default function Index() {
   const [activities, setActivities] = useState<any[]>(DUMMY_ACTIVITIES);
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [newActivityTitle, setNewActivityTitle] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const router = useRouter();
@@ -165,7 +167,37 @@ export default function Index() {
 
   useEffect(() => {
     fetchActivities();
+    getUserLocation();
   }, []);
+
+  async function getUserLocation() {
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Permission to access location was denied');
+        return;
+      }
+      let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+
+      // Update activities if they are dummy ones to be near the user
+      setActivities(prev => prev.map((a, i) => {
+        if (a.id.startsWith('dummy-')) {
+          return {
+            ...a,
+            latitude: location.coords.latitude + (Math.random() - 0.5) * 0.04,
+            longitude: location.coords.longitude + (Math.random() - 0.5) * 0.04,
+          };
+        }
+        return a;
+      }));
+    } catch (_) {
+      console.warn('Could not fetch location');
+    }
+  }
 
   async function fetchActivities() {
     try {
@@ -188,24 +220,6 @@ export default function Index() {
   const filteredActivities = selectedCategory === 'all'
     ? activities
     : activities.filter(a => a.category === selectedCategory);
-
-  // Map component
-  let MapComponent: any = View;
-  let MarkerComponent: any = View;
-  let providerDefault: any = undefined;
-
-  if (Platform.OS === 'web') {
-    try {
-      const WebMaps = require('@teovilla/react-native-web-maps');
-      MapComponent = WebMaps.default;
-      MarkerComponent = WebMaps.Marker;
-    } catch (_) { }
-  } else {
-    const RNMaps = require('react-native-maps');
-    MapComponent = RNMaps.default;
-    MarkerComponent = RNMaps.Marker;
-    providerDefault = RNMaps.PROVIDER_DEFAULT;
-  }
 
   const renderCategoryPill = ({ item }: { item: typeof ActivityCategories[number] }) => {
     const active = selectedCategory === item.id;
@@ -270,7 +284,8 @@ export default function Index() {
 
       {/* ── FULL-BLEED MAP ── */}
       <HomeMap
-        activities={activities}
+        activities={filteredActivities}
+        userLocation={userLocation}
         onPinPress={(id) => router.push(`/activity/${id}`)}
         onMapPress={() => snapSheet(SNAP_COLLAPSED)}
       />

@@ -4,6 +4,7 @@ import { Colors, Shadows } from '../constants/theme';
 
 interface HomeMapProps {
     activities: any[];
+    userLocation?: { latitude: number, longitude: number } | null;
     onPinPress: (activityId: string) => void;
     onMapPress: () => void;
 }
@@ -11,20 +12,23 @@ interface HomeMapProps {
 // Native iOS/Android version — react-native-maps is lazy-required so Metro
 // doesn't statically analyze it. The .web.tsx platform extension ensures
 // this file is never loaded on web builds anyway.
-export default function HomeMap({ activities, onPinPress, onMapPress }: HomeMapProps) {
+export default function HomeMap({ activities, userLocation, onPinPress, onMapPress }: HomeMapProps) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const RNMaps = require('react-native-maps');
     const MapView = RNMaps.default;
     const Marker = RNMaps.Marker;
     const PROVIDER_DEFAULT = RNMaps.PROVIDER_DEFAULT;
 
+    const initialLat = userLocation?.latitude || 34.02;
+    const initialLng = userLocation?.longitude || -118.495;
+
     return (
         <MapView
             provider={PROVIDER_DEFAULT}
             style={StyleSheet.absoluteFill}
-            initialRegion={{
-                latitude: 34.02,
-                longitude: -118.495,
+            region={{
+                latitude: initialLat,
+                longitude: initialLng,
                 latitudeDelta: 0.07,
                 longitudeDelta: 0.07,
             }}
