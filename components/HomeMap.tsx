@@ -24,9 +24,10 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
 
     return (
         <MapView
+            key={`${initialLat}-${initialLng}`}
             provider={PROVIDER_DEFAULT}
             style={StyleSheet.absoluteFill}
-            region={{
+            initialRegion={{
                 latitude: initialLat,
                 longitude: initialLng,
                 latitudeDelta: 0.05,

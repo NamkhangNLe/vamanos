@@ -1,50 +1,43 @@
-# Welcome to your Expo app 👋
+# Vámonos 🚀
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Vámonos is a social coordination app designed for spontaneous activities with friend groups. See who's down, set squad thresholds, and track real-time progress toward the event.
 
-## Get started
+## 📍 Real-time Location Features
 
-1. Install dependencies
+The app now features robust real-time location integration across all platforms (iOS, Android, and Web):
 
+- **Automatic Location Tagging**: New activities are automatically tagged with your current coordinates using `expo-location`.
+- **Dynamic Maps**: Maps center on your actual location and show your progress toward activity destinations.
+- **Live Participation Pins**: See where your squad is relative to the activity in real-time.
+- **Web Support**: Full Leaflet-based map integration for web browsers with IP/Browser-based location estimation.
+- **Smart Fallbacks**: Graceful fallback to city-level centering if location permissions are denied.
+
+## 🚀 Getting Started
+
+1. **Install dependencies**
    ```bash
    npm install
    ```
 
-2. Start the app
+2. **Setup Supabase**
+   - Configure your environment variables in `.env` with your Supabase URL and Anon Key.
 
+3. **Start the app**
    ```bash
-    npx expo start
+   npm run ios     # Run on iOS
+   npm run android # Run on Android
+   npm run web     # Run on Web
    ```
 
-In the output, you'll find options to open the app in a
+## 🛠 Features
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- **Activity Creation**: Set emojis, titles, and squad thresholds.
+- **RSVP System**: "I'm Down" vs "Maybe", with progress bars tracking toward the minimum squad size.
+- **Crew Management**: Coordinate within specific friend groups.
+- **Native Experience**: Haptics, blurs, and smooth bottom-sheet interactions.
+- **Full-Screen Map**: Uber-style home screen with activity discovery pins.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## 📚 Learn More
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [Expo documentation](https://docs.expo.dev/)
+- [Supabase documentation](https://supabase.com/docs)

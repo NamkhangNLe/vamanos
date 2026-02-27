@@ -51,9 +51,12 @@ export default function ActivityDetail() {
     const insets = useSafeAreaInsets();
 
     useEffect(() => {
-        getUserLocation();
         fetchActivityDetails();
-    }, [activityId]);
+    }, [activityId, userLocation]);
+
+    useEffect(() => {
+        getUserLocation();
+    }, []);
 
     async function getUserLocation() {
         try {

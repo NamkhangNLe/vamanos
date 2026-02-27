@@ -32,6 +32,7 @@ export default function ActivityMap({ activity, participants, userLocation }: Ac
     return (
         <View style={styles.mapContainer}>
             <MapView
+                key={`${mapLat}-${mapLng}`}
                 provider={PROVIDER_DEFAULT}
                 style={styles.map}
                 initialRegion={{
