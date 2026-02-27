@@ -51,29 +51,47 @@ export default function Auth() {
       <View style={[styles.verticallySpaced, styles.mt20]}>
         <Input
           label="Email"
-          leftIcon={{ type: 'font-awesome', name: 'envelope' }}
+          leftIcon={{ type: 'font-awesome', name: 'envelope', color: '#8E8E93' }}
           onChangeText={(text) => setEmail(text)}
           value={email}
           placeholder="email@address.com"
           autoCapitalize={'none'}
+          inputContainerStyle={styles.inputContainer}
+          labelStyle={styles.label}
+          inputStyle={styles.inputText}
         />
       </View>
       <View style={styles.verticallySpaced}>
         <Input
           label="Password"
-          leftIcon={{ type: 'font-awesome', name: 'lock' }}
+          leftIcon={{ type: 'font-awesome', name: 'lock', color: '#8E8E93' }}
           onChangeText={(text) => setPassword(text)}
           value={password}
           secureTextEntry={true}
           placeholder="Password"
           autoCapitalize={'none'}
+          inputContainerStyle={styles.inputContainer}
+          labelStyle={styles.label}
+          inputStyle={styles.inputText}
         />
       </View>
       <View style={[styles.verticallySpaced, styles.mt20]}>
-        <Button title="Sign in" disabled={loading} onPress={() => signInWithEmail()} />
+        <Button
+          title="Sign in"
+          disabled={loading}
+          onPress={() => signInWithEmail()}
+          buttonStyle={styles.primaryButton}
+          titleStyle={styles.buttonTitle}
+        />
       </View>
       <View style={styles.verticallySpaced}>
-        <Button title="Sign up" disabled={loading} onPress={() => signUpWithEmail()} />
+        <Button
+          title="Sign up"
+          disabled={loading}
+          onPress={() => signUpWithEmail()}
+          buttonStyle={styles.secondaryButton}
+          titleStyle={styles.secondaryButtonTitle}
+        />
       </View>
     </View>
   )
@@ -82,14 +100,57 @@ export default function Auth() {
 const styles = StyleSheet.create({
   container: {
     marginTop: 40,
-    padding: 12,
+    padding: 24,
+    backgroundColor: '#F9F9F9',
+    flex: 1,
   },
   verticallySpaced: {
-    paddingTop: 4,
-    paddingBottom: 4,
+    paddingTop: 8,
+    paddingBottom: 8,
     alignSelf: 'stretch',
   },
   mt20: {
     marginTop: 20,
+  },
+  inputContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    height: 56,
+  },
+  label: {
+    color: '#8E8E93',
+    fontWeight: '600',
+    marginBottom: 8,
+    marginLeft: 4,
+    fontSize: 14,
+  },
+  inputText: {
+    color: '#1C1C1E',
+    fontSize: 16,
+  },
+  primaryButton: {
+    backgroundColor: '#000000',
+    borderRadius: 28,
+    height: 56,
+  },
+  secondaryButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    height: 56,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  buttonTitle: {
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  secondaryButtonTitle: {
+    fontWeight: '700',
+    fontSize: 16,
+    color: '#1C1C1E',
   },
 })

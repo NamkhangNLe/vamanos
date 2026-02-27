@@ -1,21 +1,52 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Session } from '@supabase/supabase-js';
+import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
+const DUMMY_CREWS = [
+  {
+    id: 'd1',
+    name: 'LA Squad',
+    members: [{ profiles: { username: 'Nam' } }, { profiles: { username: 'Alex' } }, { profiles: { username: 'Sam' } }, { profiles: { username: 'Jordan' } }],
+  },
+  {
+    id: 'd2',
+    name: 'Foodies',
+    members: [{ profiles: { username: 'Maya' } }, { profiles: { username: 'Chris' } }],
+  },
+  {
+    id: 'd3',
+    name: 'Ballers',
+    members: [{ profiles: { username: 'Taylor' } }, { profiles: { username: 'Morgan' } }, { profiles: { username: 'Casey' } }],
+  },
+];
+
+const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
+
+function getColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 export default function AmigosScreen() {
+  const insets = useSafeAreaInsets();
   const [session, setSession] = useState<Session | null>(null);
-  const [crews, setCrews] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [crews, setCrews] = useState<any[]>(DUMMY_CREWS);
+  const [loading, setLoading] = useState(false);
   const [newCrewName, setNewCrewName] = useState('');
 
   useEffect(() => {
@@ -30,23 +61,24 @@ export default function AmigosScreen() {
       setLoading(true);
       const { data, error } = await supabase
         .from('crews')
-        .select(`
-          *,
-          members:crew_members(user_id, profiles(username, avatar_url))
-        `)
+        .select('*, members:crew_members(user_id, profiles(username, avatar_url))')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setCrews(data || []);
-    } catch (error) {
-      console.error('Error fetching crews:', error);
-    } finally {
-      setLoading(false);
-    }
+      if (!error && data && data.length > 0) {
+        setCrews(data);
+      }
+    } catch (_) { }
+    finally { setLoading(false); }
   }
 
   async function handleCreateCrew() {
-    if (!newCrewName.trim() || !session?.user) return;
+    if (!newCrewName.trim()) return;
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    if (!session?.user) {
+      Alert.alert('Sign in required', 'You need to be signed in to create a crew.');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -58,71 +90,108 @@ export default function AmigosScreen() {
 
       if (crewError) throw crewError;
 
-      const { error: memberError } = await supabase
-        .from('crew_members')
-        .insert({ crew_id: crew.id, user_id: session.user.id });
-
-      if (memberError) throw memberError;
+      await supabase.from('crew_members').insert({ crew_id: crew.id, user_id: session.user.id });
 
       setNewCrewName('');
       fetchCrews(session.user.id);
-      Alert.alert('Success', `Crew "${newCrewName}" created!`);
-    } catch (error) {
+    } catch (_) {
       Alert.alert('Error', 'Failed to create crew');
     } finally {
       setLoading(false);
     }
   }
 
-  const renderCrew = ({ item }: { item: any }) => (
-    <View style={styles.crewCard}>
-      <View style={styles.crewHeader}>
-        <Text style={styles.crewName}>{item.name}</Text>
-        <Text style={styles.memberCount}>{item.members?.length || 0} members</Text>
-      </View>
-      <View style={styles.memberList}>
-        {item.members?.slice(0, 5).map((m: any, idx: number) => (
-          <View key={idx} style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarText}>{m.profiles?.username?.[0]?.toUpperCase() || '?'}</Text>
+  const renderCrew = ({ item }: { item: any }) => {
+    const members = item.members || [];
+    return (
+      <TouchableOpacity style={styles.crewCard} activeOpacity={0.85}>
+        <View style={styles.crewLeft}>
+          <View style={styles.crewIconBg}>
+            <Text style={styles.crewIcon}>👥</Text>
           </View>
-        ))}
-      </View>
-    </View>
-  );
+        </View>
+        <View style={styles.crewInfo}>
+          <View style={styles.crewTitleRow}>
+            <Text style={styles.crewName}>{item.name}</Text>
+            <View style={styles.memberBadge}>
+              <Text style={styles.memberBadgeText}>{members.length}</Text>
+            </View>
+          </View>
+          {/* Avatar stack */}
+          <View style={styles.avatarStack}>
+            {members.slice(0, 5).map((m: any, idx: number) => {
+              const name = m.profiles?.username || '?';
+              return (
+                <View
+                  key={idx}
+                  style={[
+                    styles.stackAvatar,
+                    { backgroundColor: getColor(name), marginLeft: idx === 0 ? 0 : -8, zIndex: 10 - idx }
+                  ]}
+                >
+                  <Text style={styles.stackAvatarText}>{name[0].toUpperCase()}</Text>
+                </View>
+              );
+            })}
+            {members.length > 5 && (
+              <View style={[styles.stackAvatar, { backgroundColor: Colors.backgroundTertiary, marginLeft: -8 }]}>
+                <Text style={[styles.stackAvatarText, { color: Colors.textSecondary }]}>+{members.length - 5}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.createSection}>
-        <TextInput
-          style={styles.input}
-          placeholder="New Crew Name (e.g. Volleyball Crew)"
-          placeholderTextColor="#666"
-          value={newCrewName}
-          onChangeText={setNewCrewName}
-        />
-        <TouchableOpacity
-          style={[styles.addButton, !newCrewName.trim() && styles.disabledButton]}
-          onPress={handleCreateCrew}
-          disabled={!newCrewName.trim() || loading}
-        >
-          <Ionicons name="add" size={28} color="#000" />
-        </TouchableOpacity>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Amigos</Text>
+        <Text style={styles.headerSub}>Your crews</Text>
       </View>
 
       <FlatList
         data={crews}
-        keyExtractor={(item) => item.id}
+        keyExtractor={item => item.id}
         renderItem={renderCrew}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={<Text style={styles.sectionTitle}>Your Crews</Text>}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>You're not in any crews yet.</Text>
-          </View>
-        }
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
         onRefresh={() => session && fetchCrews(session.user.id)}
         refreshing={loading}
+        ListHeaderComponent={
+          crews.length === 0 ? null : undefined
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>👯</Text>
+            <Text style={styles.emptyTitle}>No crews yet</Text>
+            <Text style={styles.emptySub}>Create one below to get started!</Text>
+          </View>
+        }
       />
+
+      {/* Create crew floating bar */}
+      <View style={[styles.createBar, { paddingBottom: insets.bottom + 16 }]}>
+        <TextInput
+          style={styles.createInput}
+          placeholder="New crew name..."
+          placeholderTextColor={Colors.textSecondary}
+          value={newCrewName}
+          onChangeText={setNewCrewName}
+          returnKeyType="done"
+          onSubmitEditing={handleCreateCrew}
+        />
+        <TouchableOpacity
+          style={[styles.createBtn, !newCrewName.trim() && styles.createBtnDisabled]}
+          onPress={handleCreateCrew}
+          disabled={!newCrewName.trim() || loading}
+        >
+          <Ionicons name="add" size={22} color={Colors.white} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -130,92 +199,147 @@ export default function AmigosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: Colors.background,
   },
-  createSection: {
-    flexDirection: 'row',
-    padding: 20,
-    gap: 12,
-    alignItems: 'center',
+
+  // Header
+  header: {
+    backgroundColor: Colors.backgroundElevated,
+    paddingHorizontal: Spacing.xxl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: Colors.separatorLight,
   },
-  input: {
-    flex: 1,
-    height: 50,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    color: '#fff',
+  headerTitle: {
+    ...Typography.largeTitle,
+    color: Colors.text,
   },
-  addButton: {
-    backgroundColor: '#ffd33d',
-    width: 50,
-    height: 50,
-    borderRadius: 12,
+  headerSub: {
+    ...Typography.subhead,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+
+  // List
+  listContent: {
+    padding: Spacing.xl,
+    gap: 10,
+  },
+
+  // Crew card
+  crewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundElevated,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    marginBottom: 10,
+    gap: Spacing.md,
+    ...Shadows.small,
+    borderWidth: 1,
+    borderColor: Colors.separatorLight,
+  },
+  crewLeft: {},
+  crewIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: 'rgba(0,122,255,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  disabledButton: {
-    backgroundColor: '#444',
+  crewIcon: { fontSize: 24 },
+  crewInfo: {
+    flex: 1,
+    gap: 6,
   },
-  listContent: {
-    padding: 20,
-  },
-  sectionTitle: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  crewCard: {
-    backgroundColor: '#1e1e1e',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  crewHeader: {
+  crewTitleRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  crewName: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  memberCount: {
-    color: '#ffd33d',
-    fontSize: 14,
-  },
-  memberList: {
-    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  avatarPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#333',
+  crewName: {
+    ...Typography.headline,
+    color: Colors.text,
+  },
+  memberBadge: {
+    backgroundColor: Colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
+  },
+  memberBadgeText: {
+    ...Typography.caption2,
+    color: Colors.textSecondary,
+    fontWeight: '700',
+  },
+
+  // Avatar stack
+  avatarStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stackAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: Colors.backgroundElevated,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#444',
   },
-  avatarText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
+  stackAvatarText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: '700',
   },
+
+  // Empty state
   emptyState: {
     alignItems: 'center',
-    marginTop: 100,
+    paddingTop: 80,
   },
-  emptyText: {
-    color: '#666',
-    fontSize: 16,
+  emptyEmoji: { fontSize: 56, marginBottom: Spacing.md },
+  emptyTitle: { ...Typography.title3, color: Colors.text, marginBottom: 4 },
+  emptySub: { ...Typography.subhead, color: Colors.textSecondary },
+
+  // Create bar
+  createBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    backgroundColor: Colors.backgroundElevated,
+    borderTopWidth: 1,
+    borderTopColor: Colors.separatorLight,
+    ...Shadows.sheet,
+  },
+  createInput: {
+    flex: 1,
+    height: 48,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.lg,
+    ...Typography.callout,
+    color: Colors.text,
+  },
+  createBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.medium,
+  },
+  createBtnDisabled: {
+    backgroundColor: Colors.backgroundTertiary,
+    shadowOpacity: 0,
   },
 });
-

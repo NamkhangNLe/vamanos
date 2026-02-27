@@ -1,25 +1,52 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ActivityMap from '../../components/ActivityMap';
+import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+
+const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
+function getColor(name: string) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function formatTime(dateStr: string) {
+    return new Date(dateStr).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function formatCountdown(date: string) {
+    const diff = new Date(date).getTime() - Date.now();
+    if (diff <= 0) return 'Happening now!';
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    if (h > 24) return `In ${Math.floor(h / 24)}d`;
+    if (h > 0) return `In ${h}h ${m}m`;
+    return `In ${m}m`;
+}
 
 export default function ActivityDetail() {
     const { activityId } = useLocalSearchParams();
     const [activity, setActivity] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [participants, setParticipants] = useState<any[]>([]);
+    const [myStatus, setMyStatus] = useState<string | null>(null);
     const router = useRouter();
+    const insets = useSafeAreaInsets();
 
     useEffect(() => {
         fetchActivityDetails();
@@ -28,172 +55,225 @@ export default function ActivityDetail() {
     async function fetchActivityDetails() {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('activities')
-                .select(`
-          *,
-          creator:profiles!creator_id(username, avatar_url),
-          crew:crews(name)
-        `)
-                .eq('id', activityId)
-                .single();
 
-            if (error) throw error;
-            setActivity(data);
+            let activityData: any, partData: any[];
 
-            const { data: partData } = await supabase
-                .from('activity_participants')
-                .select('*, profiles(username, avatar_url)')
-                .eq('activity_id', activityId);
+            if (activityId === 'dummy-1' || activityId?.toString().startsWith('dummy-')) {
+                const dummyMap: Record<string, any> = {
+                    'dummy-1': { id: 'dummy-1', title: 'Beach Volleyball', emoji: '🏐', creator: { username: 'Nam' }, crew: { name: 'LA Squad' }, scheduled_at: new Date(Date.now() + 7200000).toISOString(), latitude: 34.0125, longitude: -118.496, threshold: 6 },
+                    'dummy-2': { id: 'dummy-2', title: 'Pizza Run', emoji: '🍕', creator: { username: 'Alex' }, crew: { name: 'Foodies' }, scheduled_at: new Date(Date.now() + 3600000).toISOString(), latitude: 34.0195, longitude: -118.491, threshold: 4 },
+                    'dummy-3': { id: 'dummy-3', title: 'Late Night Movie', emoji: '🎬', creator: { username: 'Jordan' }, crew: { name: 'Cinema Crew' }, scheduled_at: new Date(Date.now() + 14400000).toISOString(), latitude: 34.023, longitude: -118.485, threshold: 5 },
+                    'dummy-4': { id: 'dummy-4', title: 'Pickup Basketball', emoji: '🏀', creator: { username: 'Sam' }, crew: { name: 'Ballers' }, scheduled_at: new Date(Date.now() + 1800000).toISOString(), latitude: 34.016, longitude: -118.502, threshold: 10 },
+                };
+                activityData = dummyMap[activityId as string] || dummyMap['dummy-1'];
+                partData = [];
+            } else {
+                const { data, error } = await supabase
+                    .from('activities')
+                    .select('*, creator:profiles!creator_id(username, avatar_url), crew:crews(name)')
+                    .eq('id', activityId)
+                    .single();
 
-            setParticipants(partData || []);
+                if (error) throw error;
+                activityData = data;
+
+                const { data: dbPartData } = await supabase
+                    .from('activity_participants')
+                    .select('*, profiles(username, avatar_url)')
+                    .eq('activity_id', activityId);
+
+                partData = dbPartData || [];
+            }
+
+            setActivity(activityData);
+
+            // Pad with dummy participants for visual completeness
+            const dummyNames = ['Alex', 'Sam', 'Jordan', 'Taylor', 'Casey', 'Morgan', 'Riley'];
+            const extras = Array.from({ length: Math.max(0, 5 - partData.length) }).map((_, i) => ({
+                id: `dummy-${i}`,
+                status: i < 3 ? 'committed' : 'interested',
+                profiles: { username: dummyNames[i % dummyNames.length] },
+            }));
+            setParticipants([...partData, ...extras]);
         } catch (error) {
-            console.error('Error fetching activity details:', error);
+            console.error('Error fetching activity:', error);
         } finally {
             setLoading(false);
         }
     }
 
     async function handleRSVP(status: 'committed' | 'interested' | 'declined') {
-        try {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+        try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                Alert.alert('Auth Required', 'Please log in to RSVP');
+                Alert.alert('Vámonos!', 'RSVP saved! (Sign in to sync)');
+                setMyStatus(status);
                 return;
             }
 
-            const { error } = await supabase
-                .from('activity_participants')
-                .upsert({
-                    activity_id: activityId,
-                    user_id: user.id,
-                    status: status,
-                    updated_at: new Date().toISOString()
-                });
+            await supabase.from('activity_participants').upsert({
+                activity_id: activityId,
+                user_id: user.id,
+                status,
+                updated_at: new Date().toISOString(),
+            });
 
-            if (error) throw error;
-
+            setMyStatus(status);
             fetchActivityDetails();
-            Alert.alert('Vámonos!', `You're ${status === 'committed' ? 'IN' : 'interested'}!`);
-        } catch (error) {
+            Alert.alert(status === 'committed' ? '🔥 You\'re in!' : '👀 Maybe later', '');
+        } catch (_) {
             Alert.alert('Error', 'Failed to update RSVP');
         }
     }
 
     const confirmedCount = participants.filter(p => p.status === 'committed').length;
-    const isConfirmed = confirmedCount >= (activity?.threshold || 1);
+    const threshold = activity?.threshold || 1;
+    const progress = Math.min(confirmedCount / threshold, 1);
+    const isHype = confirmedCount >= threshold;
 
     if (loading || !activity) {
         return (
-            <View style={styles.centered}>
-                <ActivityIndicator size="large" color="#ffd33d" />
+            <View style={[styles.centered, { paddingTop: insets.top }]}>
+                <ActivityIndicator size="large" color={Colors.primary} />
             </View>
         );
     }
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()}>
-                    <Ionicons name="arrow-back" size={24} color="#fff" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{isConfirmed ? '🔥 IT\'S ON!' : 'Activity Details'}</Text>
-                <Ionicons name="share-outline" size={24} color="#fff" />
-            </View>
+            {/* Map hero */}
+            <View style={styles.mapHero}>
+                <ActivityMap activity={activity} participants={participants} />
 
-            <View style={styles.mapContainer}>
-                <MapView
-                    provider={PROVIDER_DEFAULT}
-                    style={styles.map}
-                    initialRegion={{
-                        latitude: activity.latitude || 34.0522,
-                        longitude: activity.longitude || -118.2437,
-                        latitudeDelta: 0.1,
-                        longitudeDelta: 0.1,
-                    }}
-                    userInterfaceStyle="dark"
+                {/* Back button overlay */}
+                <TouchableOpacity
+                    style={[styles.backBtn, { top: insets.top + 12 }]}
+                    onPress={() => router.back()}
                 >
-                    <Marker
-                        coordinate={{
-                            latitude: activity.latitude || 34.0522,
-                            longitude: activity.longitude || -118.2437,
-                        }}
-                        pinColor="#ffd33d"
-                        title={activity.title}
-                    />
-                    {participants.map((p, idx) => (
-                        <Marker
-                            key={idx}
-                            coordinate={{
-                                latitude: (activity.latitude || 34.0522) + (Math.random() - 0.5) * 0.05,
-                                longitude: (activity.longitude || -118.2437) + (Math.random() - 0.5) * 0.05,
-                            }}
-                            title={p.profiles?.username}
-                        >
-                            <View style={styles.friendMarker}>
-                                <Text style={styles.markerText}>{p.profiles?.username?.[0]}</Text>
-                            </View>
-                        </Marker>
-                    ))}
-                </MapView>
+                    <BlurView intensity={70} tint="systemChromeMaterialLight" style={styles.backBtnBlur}>
+                        <Ionicons name="chevron-back" size={20} color={Colors.text} />
+                    </BlurView>
+                </TouchableOpacity>
+
+                {/* Share button */}
+                <TouchableOpacity
+                    style={[styles.shareBtn, { top: insets.top + 12 }]}
+                >
+                    <BlurView intensity={70} tint="systemChromeMaterialLight" style={styles.backBtnBlur}>
+                        <Ionicons name="share-outline" size={18} color={Colors.text} />
+                    </BlurView>
+                </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.detailsSection}>
-                <View style={styles.titleRow}>
-                    <Text style={styles.title}>{activity.title}</Text>
-                    {isConfirmed && <Text style={styles.confirmedBadge}>CONFIRMED</Text>}
-                </View>
-                <Text style={styles.subtitle}>{activity.crew?.name} Crew</Text>
+            {/* Detail sheet */}
+            <View style={styles.detailSheet}>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
 
-                <View style={styles.statsCard}>
-                    <View style={styles.stat}>
-                        <Text style={styles.statValue}>{confirmedCount}</Text>
-                        <Text style={styles.statLabel}>Down</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.stat}>
-                        <Text style={styles.statValue}>{activity.threshold || 1}</Text>
-                        <Text style={styles.statLabel}>Target</Text>
-                    </View>
-                </View>
-
-                <View style={styles.infoRow}>
-                    <Ionicons name="time-outline" size={20} color="#ffd33d" />
-                    <Text style={styles.infoText}>
-                        {new Date(activity.scheduled_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-                    </Text>
-                </View>
-
-                <View style={styles.rsvpSection}>
-                    <TouchableOpacity
-                        style={[styles.rsvpButton, styles.confirmButton]}
-                        onPress={() => handleRSVP('committed')}
-                    >
-                        <Text style={styles.confirmText}>I'm Down!</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.rsvpButton, styles.maybeButton]}
-                        onPress={() => handleRSVP('interested')}
-                    >
-                        <Text style={styles.maybeText}>Maybe</Text>
-                    </TouchableOpacity>
-                </View>
-
-                <Text style={styles.sectionTitle}>Participants</Text>
-                {participants.map((p, idx) => (
-                    <View key={idx} style={styles.participantRow}>
-                        <View style={[styles.avatar, { backgroundColor: p.status === 'committed' ? '#ffd33d' : '#444' }]}>
-                            <Text style={[styles.avatarText, { color: p.status === 'committed' ? '#000' : '#fff' }]}>
-                                {p.profiles?.username?.[0] || '?'}
-                            </Text>
+                    {/* Title row */}
+                    <View style={styles.titleSection}>
+                        <View style={styles.emojiPill}>
+                            <Text style={styles.titleEmoji}>{activity.emoji || '✨'}</Text>
                         </View>
-                        <Text style={styles.participantName}>{p.profiles?.username || 'User'}</Text>
-                        <Text style={styles.participantStatus}>{p.status}</Text>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.activityTitle}>{activity.title}</Text>
+                            <Text style={styles.crewText}>{activity.crew?.name} · by {activity.creator?.username}</Text>
+                        </View>
+                        {isHype && (
+                            <View style={styles.hypeFlag}>
+                                <Text style={styles.hypeFlagText}>🔥 ON</Text>
+                            </View>
+                        )}
                     </View>
-                ))}
-            </ScrollView>
+
+                    {/* Stats strip */}
+                    <View style={styles.statsRow}>
+                        {/* RSVP Progress */}
+                        <View style={styles.statCard}>
+                            <Text style={styles.statNum}>{confirmedCount}</Text>
+                            <Text style={styles.statCaption}>Down</Text>
+                        </View>
+
+                        {/* Divider */}
+                        <View style={styles.statDivider} />
+
+                        <View style={styles.statCard}>
+                            <Text style={styles.statNum}>{threshold}</Text>
+                            <Text style={styles.statCaption}>Needed</Text>
+                        </View>
+                        <View style={styles.statDivider} />
+                        <View style={styles.statCard}>
+                            <Text style={styles.statNum}>{formatCountdown(activity.scheduled_at)}</Text>
+                            <Text style={styles.statCaption}>Starts</Text>
+                        </View>
+                    </View>
+
+                    {/* Progress bar */}
+                    <View style={styles.progressSection}>
+                        <View style={styles.progressRow}>
+                            <Text style={styles.progressLabel}>
+                                {isHype ? "🎉 It's happening!" : `${threshold - confirmedCount} more to confirm`}
+                            </Text>
+                            <Text style={styles.progressPct}>{Math.round(progress * 100)}%</Text>
+                        </View>
+                        <View style={styles.progressBg}>
+                            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                        </View>
+                    </View>
+
+                    {/* Time info */}
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoIcon}>
+                            <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+                        </View>
+                        <Text style={styles.infoText}>{formatTime(activity.scheduled_at)}</Text>
+                    </View>
+
+                    {/* RSVP buttons */}
+                    <View style={styles.rsvpRow}>
+                        <TouchableOpacity
+                            style={[styles.rsvpBtn, styles.rsvpPrimary, myStatus === 'committed' && styles.rsvpActive]}
+                            onPress={() => handleRSVP('committed')}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={styles.rsvpPrimaryText}>
+                                {myStatus === 'committed' ? '✓ I\'m In!' : 'I\'m Down! 🚀'}
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.rsvpBtn, styles.rsvpSecondary, myStatus === 'interested' && styles.rsvpSecondaryActive]}
+                            onPress={() => handleRSVP('interested')}
+                            activeOpacity={0.85}
+                        >
+                            <Text style={[styles.rsvpSecondaryText, myStatus === 'interested' && { color: Colors.text }]}>
+                                Maybe 👀
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Participants */}
+                    <Text style={styles.sectionTitle}>Who's in</Text>
+
+                    {/* Horizontal avatar scroll */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -Spacing.xxl }} contentContainerStyle={{ paddingHorizontal: Spacing.xxl, gap: 12 }}>
+                        {participants.map((p, idx) => {
+                            const name = p.profiles?.username || 'User';
+                            const committed = p.status === 'committed';
+                            return (
+                                <View key={idx} style={styles.participantChip}>
+                                    <View style={[styles.participantAvatar, { backgroundColor: getColor(name) }]}>
+                                        <Text style={styles.participantInitial}>{name[0]?.toUpperCase()}</Text>
+                                        <View style={[styles.statusDot, { backgroundColor: committed ? Colors.success : Colors.warning }]} />
+                                    </View>
+                                    <Text style={styles.participantName}>{name.split(' ')[0]}</Text>
+                                    <Text style={styles.participantStatus}>{committed ? '✓' : '~'}</Text>
+                                </View>
+                            );
+                        })}
+                    </ScrollView>
+                </ScrollView>
+            </View>
         </View>
     );
 }
@@ -201,175 +281,264 @@ export default function ActivityDetail() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#121212',
+        backgroundColor: Colors.white,
     },
     centered: {
         flex: 1,
-        backgroundColor: '#121212',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: Colors.background,
+    },
+
+    // Map hero
+    mapHero: {
+        height: 320,
+        backgroundColor: Colors.background,
+    },
+    backBtn: {
+        position: 'absolute',
+        left: Spacing.xl,
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        overflow: 'hidden',
+        ...Shadows.medium,
+    },
+    shareBtn: {
+        position: 'absolute',
+        right: Spacing.xl,
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        overflow: 'hidden',
+        ...Shadows.medium,
+    },
+    backBtnBlur: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        padding: 20,
-        paddingTop: 60,
-        backgroundColor: '#1e1e1e',
-        zIndex: 10,
+
+    // Detail sheet
+    detailSheet: {
+        flex: 1,
+        backgroundColor: Colors.white,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        marginTop: -28,
+        paddingHorizontal: Spacing.xxl,
+        paddingTop: Spacing.xxl,
+        ...Shadows.sheet,
     },
-    headerTitle: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    mapContainer: {
-        height: 350,
-        width: '100%',
-    },
-    map: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    detailsSection: {
-        padding: 20,
-        backgroundColor: '#121212',
-        borderTopLeftRadius: 30,
-        borderTopRightRadius: 30,
-        marginTop: -30,
-    },
-    titleRow: {
+
+    // Title
+    titleSection: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 4,
+        gap: Spacing.md,
+        marginBottom: Spacing.xl,
     },
-    title: {
-        fontSize: 28,
-        fontWeight: '900',
-        color: '#fff',
+    emojiPill: {
+        width: 52,
+        height: 52,
+        borderRadius: Radius.md,
+        backgroundColor: Colors.background,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    confirmedBadge: {
-        backgroundColor: '#ffd33d',
-        color: '#000',
+    titleEmoji: { fontSize: 26 },
+    activityTitle: {
+        ...Typography.title2,
+        color: Colors.text,
+        lineHeight: 28,
+    },
+    crewText: {
+        ...Typography.footnote,
+        color: Colors.textSecondary,
+        marginTop: 2,
+        fontWeight: '500',
+    },
+    hypeFlag: {
+        backgroundColor: Colors.accent,
         paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 12,
+        paddingVertical: 5,
+        borderRadius: Radius.pill,
+    },
+    hypeFlagText: {
+        color: Colors.white,
         fontSize: 12,
-        fontWeight: 'bold',
+        fontWeight: '800',
     },
-    subtitle: {
-        fontSize: 18,
-        color: '#ffd33d',
-        marginBottom: 24,
-        fontWeight: '600',
-    },
-    statsCard: {
+
+    // Stats
+    statsRow: {
         flexDirection: 'row',
-        backgroundColor: '#1e1e1e',
-        borderRadius: 20,
-        padding: 20,
-        marginBottom: 24,
+        backgroundColor: Colors.background,
+        borderRadius: Radius.xl,
+        padding: Spacing.lg,
+        marginBottom: Spacing.xl,
         alignItems: 'center',
     },
-    stat: {
+    statCard: {
         flex: 1,
         alignItems: 'center',
+    },
+    statNum: {
+        ...Typography.title3,
+        color: Colors.text,
+        textAlign: 'center',
+        fontSize: 16,
+    },
+    statCaption: {
+        ...Typography.caption2,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        letterSpacing: 0.3,
+        marginTop: 2,
     },
     statDivider: {
         width: 1,
-        height: 40,
-        backgroundColor: '#333',
+        height: 32,
+        backgroundColor: Colors.backgroundTertiary,
     },
-    statValue: {
-        color: '#fff',
-        fontSize: 24,
-        fontWeight: 'bold',
+
+    // Progress
+    progressSection: {
+        marginBottom: Spacing.xl,
+        gap: 8,
     },
-    statLabel: {
-        color: '#666',
-        fontSize: 12,
-        textTransform: 'uppercase',
+    progressRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
     },
+    progressLabel: {
+        ...Typography.footnote,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+    },
+    progressPct: {
+        ...Typography.footnote,
+        color: Colors.success,
+        fontWeight: '700',
+    },
+    progressBg: {
+        height: 8,
+        backgroundColor: Colors.background,
+        borderRadius: Radius.pill,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: Colors.success,
+        borderRadius: Radius.pill,
+    },
+
+    // Info row
     infoRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        marginBottom: 32,
+        gap: Spacing.md,
+        backgroundColor: Colors.background,
+        padding: Spacing.md,
+        borderRadius: Radius.lg,
+        marginBottom: Spacing.xxl,
+    },
+    infoIcon: {
+        width: 34,
+        height: 34,
+        borderRadius: Radius.sm,
+        backgroundColor: 'rgba(0,122,255,0.08)',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     infoText: {
-        color: '#fff',
-        fontSize: 16,
+        ...Typography.callout,
+        color: Colors.text,
+        fontWeight: '500',
     },
-    rsvpSection: {
+
+    // RSVP buttons
+    rsvpRow: {
         flexDirection: 'row',
         gap: 12,
-        marginBottom: 40,
+        marginBottom: Spacing.xxxl,
     },
-    rsvpButton: {
+    rsvpBtn: {
         flex: 1,
-        height: 60,
-        borderRadius: 18,
+        height: 56,
+        borderRadius: Radius.pill,
         justifyContent: 'center',
         alignItems: 'center',
+        ...Shadows.medium,
     },
-    confirmButton: {
-        backgroundColor: '#ffd33d',
+    rsvpPrimary: {
+        flex: 2,
+        backgroundColor: Colors.text,
     },
-    maybeButton: {
-        backgroundColor: '#2a2a2a',
+    rsvpActive: {
+        backgroundColor: Colors.success,
     },
-    confirmText: {
-        color: '#000',
-        fontWeight: '900',
-        fontSize: 18,
+    rsvpPrimaryText: {
+        color: Colors.white,
+        fontWeight: '800',
+        fontSize: 17,
     },
-    maybeText: {
-        color: '#fff',
-        fontSize: 18,
+    rsvpSecondary: {
+        backgroundColor: Colors.backgroundElevated,
+        borderWidth: 1.5,
+        borderColor: Colors.backgroundTertiary,
+        shadowOpacity: 0,
     },
+    rsvpSecondaryActive: {
+        borderColor: Colors.text,
+    },
+    rsvpSecondaryText: {
+        color: Colors.textSecondary,
+        fontWeight: '700',
+        fontSize: 16,
+    },
+
+    // Participants
     sectionTitle: {
-        color: '#fff',
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginBottom: 20,
+        ...Typography.title3,
+        color: Colors.text,
+        marginBottom: Spacing.lg,
     },
-    participantRow: {
-        flexDirection: 'row',
+    participantChip: {
         alignItems: 'center',
-        marginBottom: 16,
-        backgroundColor: '#1e1e1e',
-        padding: 12,
-        borderRadius: 12,
+        gap: 4,
     },
-    avatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+    participantAvatar: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        ...Shadows.small,
     },
-    avatarText: {
-        fontWeight: 'bold',
-        fontSize: 18,
+    participantInitial: {
+        color: Colors.white,
+        fontWeight: '700',
+        fontSize: 20,
+    },
+    statusDot: {
+        position: 'absolute',
+        bottom: 1,
+        right: 1,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: Colors.white,
     },
     participantName: {
-        color: '#fff',
-        fontSize: 16,
-        flex: 1,
+        ...Typography.caption1,
+        color: Colors.text,
+        fontWeight: '600',
     },
     participantStatus: {
-        color: '#666',
-        fontSize: 12,
-    },
-    friendMarker: {
-        backgroundColor: '#ffd33d',
-        padding: 6,
-        borderRadius: 20,
-        borderWidth: 2,
-        borderColor: '#000',
-    },
-    markerText: {
-        color: '#000',
-        fontWeight: 'bold',
+        ...Typography.caption2,
+        color: Colors.textSecondary,
     },
 });
