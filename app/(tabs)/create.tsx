@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Platform,
     ScrollView,
@@ -32,8 +33,28 @@ export default function CreateScreen() {
     const [selectedTime, setSelectedTime] = useState(0);
     const [threshold, setThreshold] = useState(4);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
 
     const activeCategory = ActivityCategories.find(c => c.id === selectedCategory);
+
+    useEffect(() => {
+        getUserLocation();
+    }, []);
+
+    async function getUserLocation() {
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') return;
+
+            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setUserLocation({
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+            });
+        } catch (_) {
+            // fallback to null if location fails
+        }
+    }
 
     async function handleCreate() {
         if (!title.trim()) return;
@@ -64,6 +85,9 @@ export default function CreateScreen() {
                 crew_id: crewData?.crew_id,
                 scheduled_at: scheduledAt,
                 threshold,
+                category: selectedCategory,
+                latitude: userLocation?.latitude,
+                longitude: userLocation?.longitude,
             });
 
             router.replace('/(tabs)');

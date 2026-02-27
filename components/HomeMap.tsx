@@ -19,8 +19,8 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
     const Marker = RNMaps.Marker;
     const PROVIDER_DEFAULT = RNMaps.PROVIDER_DEFAULT;
 
-    const initialLat = userLocation?.latitude || 34.02;
-    const initialLng = userLocation?.longitude || -118.495;
+    const initialLat = userLocation?.latitude || 34.0522;
+    const initialLng = userLocation?.longitude || -118.2437;
 
     return (
         <MapView
@@ -29,8 +29,8 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
             region={{
                 latitude: initialLat,
                 longitude: initialLng,
-                latitudeDelta: 0.07,
-                longitudeDelta: 0.07,
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
             }}
             userInterfaceStyle="light"
             showsUserLocation={true}
@@ -38,20 +38,24 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
             showsMyLocationButton={false}
             onPress={onMapPress}
         >
-            {activities.map((activity: any, idx: number) => (
-                <Marker
-                    key={activity.id || idx}
-                    coordinate={{
-                        latitude: activity.latitude || 34.02 + (idx - 2) * 0.008,
-                        longitude: activity.longitude || -118.495 + (idx - 2) * 0.005,
-                    }}
-                    onPress={() => onPinPress(activity.id)}
-                >
-                    <View style={styles.mapPin}>
-                        <Text style={styles.mapPinEmoji}>{activity.emoji || '📍'}</Text>
-                    </View>
-                </Marker>
-            ))}
+            {activities.map((activity: any, idx: number) => {
+                const lat = activity.latitude || initialLat + (Math.random() - 0.5) * 0.01;
+                const lng = activity.longitude || initialLng + (Math.random() - 0.5) * 0.01;
+                return (
+                    <Marker
+                        key={activity.id || idx}
+                        coordinate={{
+                            latitude: lat,
+                            longitude: lng,
+                        }}
+                        onPress={() => onPinPress(activity.id)}
+                    >
+                        <View style={styles.mapPin}>
+                            <Text style={styles.mapPinEmoji}>{activity.emoji || '📍'}</Text>
+                        </View>
+                    </Marker>
+                );
+            })}
         </MapView>
     );
 }

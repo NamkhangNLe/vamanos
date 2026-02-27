@@ -2,9 +2,10 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Colors, Shadows } from '../constants/theme';
 
-interface ActivityMapProps {
+export interface ActivityMapProps {
     activity: any;
     participants: any[];
+    userLocation?: { latitude: number, longitude: number } | null;
 }
 
 const FRIEND_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
@@ -16,7 +17,7 @@ function getFriendColor(name: string) {
 
 // Native iOS/Android version - uses react-native-maps
 // The .web.tsx platform extension ensures this file is NEVER loaded on web
-export default function ActivityMap({ activity, participants }: ActivityMapProps) {
+export default function ActivityMap({ activity, participants, userLocation }: ActivityMapProps) {
     if (!activity) return null;
 
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -25,26 +26,30 @@ export default function ActivityMap({ activity, participants }: ActivityMapProps
     const Marker = RNMaps.Marker;
     const PROVIDER_DEFAULT = RNMaps.PROVIDER_DEFAULT;
 
+    const mapLat = activity.latitude || userLocation?.latitude || 34.0522;
+    const mapLng = activity.longitude || userLocation?.longitude || -118.2437;
+
     return (
         <View style={styles.mapContainer}>
             <MapView
                 provider={PROVIDER_DEFAULT}
                 style={styles.map}
                 initialRegion={{
-                    latitude: activity.latitude || 34.0522,
-                    longitude: activity.longitude || -118.2437,
-                    latitudeDelta: 0.08,
-                    longitudeDelta: 0.08,
+                    latitude: mapLat,
+                    longitude: mapLng,
+                    latitudeDelta: 0.04,
+                    longitudeDelta: 0.04,
                 }}
                 userInterfaceStyle="light"
                 showsCompass={false}
+                showsUserLocation={true}
                 showsMyLocationButton={false}
             >
                 {/* Destination pin */}
                 <Marker
                     coordinate={{
-                        latitude: activity.latitude || 34.0522,
-                        longitude: activity.longitude || -118.2437,
+                        latitude: mapLat,
+                        longitude: mapLng,
                     }}
                 >
                     <View style={styles.destPin}>
@@ -62,8 +67,8 @@ export default function ActivityMap({ activity, participants }: ActivityMapProps
                             <Marker
                                 key={idx}
                                 coordinate={{
-                                    latitude: (activity.latitude || 34.0522) + (Math.random() - 0.5) * 0.04,
-                                    longitude: (activity.longitude || -118.2437) + (Math.random() - 0.5) * 0.04,
+                                    latitude: mapLat + (Math.random() - 0.5) * 0.02,
+                                    longitude: mapLng + (Math.random() - 0.5) * 0.02,
                                 }}
                                 title={name}
                             >

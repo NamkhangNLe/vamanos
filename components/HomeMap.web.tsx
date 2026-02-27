@@ -61,8 +61,8 @@ const createUserDotIcon = () => {
 
 // Web version - Uses react-leaflet and OpenStreetMap tiles (FREE, NO API KEY needed)
 export default function HomeMap({ activities, userLocation, onPinPress, onMapPress }: HomeMapProps) {
-    const initialLat = userLocation?.latitude || 34.020;
-    const initialLng = userLocation?.longitude || -118.495;
+    const initialLat = userLocation?.latitude || 34.0522;
+    const initialLng = userLocation?.longitude || -118.2437;
 
     return (
         <View style={StyleSheet.absoluteFill}>
@@ -85,20 +85,22 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                 />
 
-                {activities.map((activity, idx) => (
-                    <Marker
-                        key={activity.id || idx}
-                        position={[
-                            activity.latitude || 34.02 + (idx - 2) * 0.008,
-                            activity.longitude || -118.495 + (idx - 2) * 0.005,
-                        ]}
-                        icon={createEmojiIcon(activity.emoji)}
-                        eventHandlers={{
-                            click: () => onPinPress(activity.id),
-                        }}
-                    >
-                    </Marker>
-                ))}
+                {activities.map((activity, idx) => {
+                    const lat = activity.latitude || initialLat + (Math.random() - 0.5) * 0.01;
+                    const lng = activity.longitude || initialLng + (Math.random() - 0.5) * 0.01;
+                    return (
+                        <Marker
+                            key={activity.id || idx}
+                            position={[lat, lng]}
+                            icon={createEmojiIcon(activity.emoji)}
+                            eventHandlers={{
+                                click: () => onPinPress(activity.id),
+                            }}
+                        >
+                        </Marker>
+                    );
+                })}
+
 
                 {userLocation && (
                     <Marker

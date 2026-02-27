@@ -178,18 +178,19 @@ export default function Index() {
         return;
       }
       let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setUserLocation({
+      const currentLoc = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-      });
+      };
+      setUserLocation(currentLoc);
 
       // Update activities if they are dummy ones to be near the user
       setActivities(prev => prev.map((a, i) => {
         if (a.id.startsWith('dummy-')) {
           return {
             ...a,
-            latitude: location.coords.latitude + (Math.random() - 0.5) * 0.04,
-            longitude: location.coords.longitude + (Math.random() - 0.5) * 0.04,
+            latitude: currentLoc.latitude + (Math.random() - 0.5) * 0.03,
+            longitude: currentLoc.longitude + (Math.random() - 0.5) * 0.03,
           };
         }
         return a;

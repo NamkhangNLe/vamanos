@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -45,12 +46,26 @@ export default function ActivityDetail() {
     const [loading, setLoading] = useState(true);
     const [participants, setParticipants] = useState<any[]>([]);
     const [myStatus, setMyStatus] = useState<string | null>(null);
+    const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
     useEffect(() => {
+        getUserLocation();
         fetchActivityDetails();
     }, [activityId]);
+
+    async function getUserLocation() {
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') return;
+            const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setUserLocation({
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+            });
+        } catch (_) { }
+    }
 
     async function fetchActivityDetails() {
         try {
@@ -59,11 +74,13 @@ export default function ActivityDetail() {
             let activityData: any, partData: any[];
 
             if (activityId === 'dummy-1' || activityId?.toString().startsWith('dummy-')) {
+                const lat = userLocation?.latitude || 34.0522;
+                const lng = userLocation?.longitude || -118.2437;
                 const dummyMap: Record<string, any> = {
-                    'dummy-1': { id: 'dummy-1', title: 'Beach Volleyball', emoji: '🏐', creator: { username: 'Nam' }, crew: { name: 'LA Squad' }, scheduled_at: new Date(Date.now() + 7200000).toISOString(), latitude: 34.0125, longitude: -118.496, threshold: 6 },
-                    'dummy-2': { id: 'dummy-2', title: 'Pizza Run', emoji: '🍕', creator: { username: 'Alex' }, crew: { name: 'Foodies' }, scheduled_at: new Date(Date.now() + 3600000).toISOString(), latitude: 34.0195, longitude: -118.491, threshold: 4 },
-                    'dummy-3': { id: 'dummy-3', title: 'Late Night Movie', emoji: '🎬', creator: { username: 'Jordan' }, crew: { name: 'Cinema Crew' }, scheduled_at: new Date(Date.now() + 14400000).toISOString(), latitude: 34.023, longitude: -118.485, threshold: 5 },
-                    'dummy-4': { id: 'dummy-4', title: 'Pickup Basketball', emoji: '🏀', creator: { username: 'Sam' }, crew: { name: 'Ballers' }, scheduled_at: new Date(Date.now() + 1800000).toISOString(), latitude: 34.016, longitude: -118.502, threshold: 10 },
+                    'dummy-1': { id: 'dummy-1', title: 'Beach Volleyball', emoji: '🏐', creator: { username: 'Nam' }, crew: { name: 'LA Squad' }, scheduled_at: new Date(Date.now() + 7200000).toISOString(), latitude: lat - 0.007, longitude: lng - 0.001, threshold: 6 },
+                    'dummy-2': { id: 'dummy-2', title: 'Pizza Run', emoji: '🍕', creator: { username: 'Alex' }, crew: { name: 'Foodies' }, scheduled_at: new Date(Date.now() + 3600000).toISOString(), latitude: lat + 0.007, longitude: lng + 0.004, threshold: 4 },
+                    'dummy-3': { id: 'dummy-3', title: 'Late Night Movie', emoji: '🎬', creator: { username: 'Jordan' }, crew: { name: 'Cinema Crew' }, scheduled_at: new Date(Date.now() + 14400000).toISOString(), latitude: lat + 0.012, longitude: lng + 0.01, threshold: 5 },
+                    'dummy-4': { id: 'dummy-4', title: 'Pickup Basketball', emoji: '🏀', creator: { username: 'Sam' }, crew: { name: 'Ballers' }, scheduled_at: new Date(Date.now() + 1800000).toISOString(), latitude: lat + 0.003, longitude: lng - 0.008, threshold: 10 },
                 };
                 activityData = dummyMap[activityId as string] || dummyMap['dummy-1'];
                 partData = [];
@@ -145,7 +162,7 @@ export default function ActivityDetail() {
         <View style={styles.container}>
             {/* Map hero */}
             <View style={styles.mapHero}>
-                <ActivityMap activity={activity} participants={participants} />
+                <ActivityMap activity={activity} participants={participants} userLocation={userLocation} />
 
                 {/* Back button overlay */}
                 <TouchableOpacity
