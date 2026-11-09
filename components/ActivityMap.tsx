@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Colors, Shadows } from '../constants/theme';
+import { offsetFor } from '../lib/geo';
 
 export interface ActivityMapProps {
     activity: any;
@@ -58,18 +59,19 @@ export default function ActivityMap({ activity, participants, userLocation }: Ac
                     </View>
                 </Marker>
 
-                {/* Participant pins */}
+                {/* Participant pins — deterministic offsets per participant id. */}
                 {participants
                     .filter(p => p.status === 'committed')
                     .slice(0, 8)
                     .map((p, idx) => {
-                        const name = p.profiles?.username || '?';
+                        const name = p.profiles?.username || p.username || '?';
+                        const { dLat, dLng } = offsetFor(p.id || `${name}-${idx}`, 0.01);
                         return (
                             <Marker
-                                key={idx}
+                                key={p.id || idx}
                                 coordinate={{
-                                    latitude: mapLat + (Math.random() - 0.5) * 0.02,
-                                    longitude: mapLng + (Math.random() - 0.5) * 0.02,
+                                    latitude: mapLat + dLat,
+                                    longitude: mapLng + dLng,
                                 }}
                                 title={name}
                             >

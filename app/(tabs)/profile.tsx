@@ -13,26 +13,23 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
-
-const DUMMY_STATS = { activities: 12, crews: 3, amigos: 24 };
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { fetchStats, getCurrentUser, signOut, type CurrentUser } from '../../lib/store';
 
 export default function ProfileScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const [session, setSession] = useState<any>(null);
-    const [profile, setProfile] = useState<any>(null);
+    const [user, setUser] = useState<CurrentUser | null>(null);
+    const [stats, setStats] = useState({ activities: 0, joined: 0, crews: 0, amigos: 0 });
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            if (session?.user?.id) fetchProfile(session.user.id);
-        });
+        load();
     }, []);
 
-    async function fetchProfile(userId: string) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (data) setProfile(data);
+    async function load() {
+        const u = await getCurrentUser();
+        setUser(u);
+        setStats(await fetchStats());
     }
 
     async function handleSignOut() {
@@ -42,12 +39,15 @@ export default function ProfileScreen() {
             {
                 text: 'Sign Out',
                 style: 'destructive',
-                onPress: () => supabase.auth.signOut(),
+                onPress: async () => {
+                    await signOut();
+                    router.replace('/auth');
+                },
             },
         ]);
     }
 
-    const displayName = profile?.username || session?.user?.email?.split('@')[0] || 'You';
+    const displayName = user?.username || 'You';
     const initial = displayName[0]?.toUpperCase() || '?';
 
     const settingsItems = [
@@ -77,26 +77,52 @@ export default function ProfileScreen() {
                         <View style={styles.onlineDot} />
                     </View>
                     <Text style={styles.displayName}>{displayName}</Text>
-                    <Text style={styles.emailText}>{session?.user?.email || 'Not signed in'}</Text>
+                    <Text style={styles.emailText}>{user?.email || (isSupabaseConfigured ? 'Signed in' : 'Local mode — no account yet')}</Text>
+                    {!isSupabaseConfigured && (
+                        <View style={styles.localBadge}>
+                            <Text style={styles.localBadgeText}>📱 Local demo mode</Text>
+                        </View>
+                    )}
                 </View>
 
-                {/* Stats strip */}
+                {/* Stats strip — real counts from the store */}
                 <View style={styles.statsCard}>
                     <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{DUMMY_STATS.activities}</Text>
-                        <Text style={styles.statLabel}>Activities</Text>
+                        <Text style={styles.statValue}>{stats.activities}</Text>
+                        <Text style={styles.statLabel}>Created</Text>
                     </View>
                     <View style={styles.statDivider} />
                     <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{DUMMY_STATS.crews}</Text>
+                        <Text style={styles.statValue}>{stats.joined}</Text>
+                        <Text style={styles.statLabel}>Joined</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                        <Text style={styles.statValue}>{stats.crews}</Text>
                         <Text style={styles.statLabel}>Crews</Text>
                     </View>
                     <View style={styles.statDivider} />
                     <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{DUMMY_STATS.amigos}</Text>
+                        <Text style={styles.statValue}>{stats.amigos}</Text>
                         <Text style={styles.statLabel}>Amigos</Text>
                     </View>
                 </View>
+
+                {/* Supabase setup card (local mode only) */}
+                {!isSupabaseConfigured && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionLabel}>Go live</Text>
+                        <View style={styles.setupCard}>
+                            <Text style={styles.setupTitle}>Connect Supabase to sync with your squad</Text>
+                            <Text style={styles.setupBody}>
+                                1. Create a project at supabase.com{'\n'}
+                                2. Run the SQL in supabase/migrations/ (or `supabase db push`){'\n'}
+                                3. Copy `.env.example` to `.env` and fill in your URL + anon key{'\n'}
+                                4. Restart the app — your demo plans stay on this device
+                            </Text>
+                        </View>
+                    </View>
+                )}
 
                 {/* Settings */}
                 <View style={styles.section}>
@@ -122,17 +148,19 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
-                {/* Sign out */}
-                <View style={styles.section}>
-                    <TouchableOpacity
-                        style={styles.signOutBtn}
-                        onPress={handleSignOut}
-                        activeOpacity={0.8}
-                    >
-                        <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
-                        <Text style={styles.signOutText}>Sign Out</Text>
-                    </TouchableOpacity>
-                </View>
+                {/* Sign out (Supabase mode only — there is no account in local mode) */}
+                {isSupabaseConfigured && (
+                    <View style={styles.section}>
+                        <TouchableOpacity
+                            style={styles.signOutBtn}
+                            onPress={handleSignOut}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
+                            <Text style={styles.signOutText}>Sign Out</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
 
                 {/* Version */}
                 <Text style={styles.version}>Vámonos v1.0 · Made with ❤️ for the spontaneous</Text>
@@ -213,6 +241,18 @@ const styles = StyleSheet.create({
         ...Typography.subhead,
         color: Colors.textSecondary,
     },
+    localBadge: {
+        marginTop: Spacing.md,
+        backgroundColor: 'rgba(255,149,0,0.1)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: Radius.pill,
+    },
+    localBadgeText: {
+        ...Typography.caption1,
+        color: '#8a5a00',
+        fontWeight: '700',
+    },
 
     // Stats
     statsCard: {
@@ -249,7 +289,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.backgroundTertiary,
     },
 
-    // Settings section
+    // Setup card
     section: {
         marginHorizontal: Spacing.xl,
         marginTop: Spacing.xl,
@@ -263,6 +303,26 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.sm,
         paddingLeft: 4,
     },
+    setupCard: {
+        backgroundColor: Colors.backgroundElevated,
+        borderRadius: Radius.xl,
+        padding: Spacing.xl,
+        ...Shadows.small,
+        borderWidth: 1,
+        borderColor: Colors.separatorLight,
+        gap: 8,
+    },
+    setupTitle: {
+        ...Typography.headline,
+        color: Colors.text,
+    },
+    setupBody: {
+        ...Typography.subhead,
+        color: Colors.textSecondary,
+        lineHeight: 22,
+    },
+
+    // Settings section
     settingsList: {
         backgroundColor: Colors.backgroundElevated,
         borderRadius: Radius.xl,

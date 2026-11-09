@@ -9,6 +9,7 @@ import {
     Alert,
     Platform,
     ScrollView,
+    Share,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -17,7 +18,16 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ActivityMap from '../../components/ActivityMap';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
+import { formatDistance } from '../../lib/geo';
+import {
+    fetchActivity,
+    fetchParticipants,
+    setRSVP,
+    subscribeToActivityChanges,
+    type Activity,
+    type Participant,
+    type RSVPStatus,
+} from '../../lib/store';
 
 const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
 function getColor(name: string) {
@@ -30,9 +40,9 @@ function formatTime(dateStr: string) {
     return new Date(dateStr).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function formatCountdown(date: string) {
-    const diff = new Date(date).getTime() - Date.now();
-    if (diff <= 0) return 'Happening now!';
+function formatCountdown(date: string, now: number) {
+    const diff = new Date(date).getTime() - now;
+    if (diff <= 0) return 'Now';
     const h = Math.floor(diff / 3600000);
     const m = Math.floor((diff % 3600000) / 60000);
     if (h > 24) return `In ${Math.floor(h / 24)}d`;
@@ -41,22 +51,42 @@ function formatCountdown(date: string) {
 }
 
 export default function ActivityDetail() {
-    const { activityId } = useLocalSearchParams();
-    const [activity, setActivity] = useState<any>(null);
+    const { activityId } = useLocalSearchParams<{ activityId: string }>();
+    const [activity, setActivity] = useState<Activity | null>(null);
     const [loading, setLoading] = useState(true);
-    const [participants, setParticipants] = useState<any[]>([]);
-    const [myStatus, setMyStatus] = useState<string | null>(null);
+    const [participants, setParticipants] = useState<Participant[]>([]);
     const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
+    const [now, setNow] = useState(Date.now());
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
-    useEffect(() => {
-        fetchActivityDetails();
-    }, [activityId, userLocation]);
+    async function load() {
+        if (!activityId) return;
+        try {
+            const [a, parts] = await Promise.all([
+                fetchActivity(activityId),
+                fetchParticipants(activityId),
+            ]);
+            if (a) setActivity(a);
+            setParticipants(parts);
+        } catch (error) {
+            console.error('Error fetching activity:', error);
+        } finally {
+            setLoading(false);
+        }
+    }
 
     useEffect(() => {
+        load();
         getUserLocation();
-    }, []);
+        // Live: someone RSVPs and this screen updates without a refresh.
+        const unsubscribe = subscribeToActivityChanges(() => load());
+        const tick = setInterval(() => setNow(Date.now()), 30000);
+        return () => {
+            unsubscribe();
+            clearInterval(tick);
+        };
+    }, [activityId]);
 
     async function getUserLocation() {
         try {
@@ -70,88 +100,40 @@ export default function ActivityDetail() {
         } catch (_) { }
     }
 
-    async function fetchActivityDetails() {
-        try {
-            setLoading(true);
-
-            let activityData: any, partData: any[];
-
-            if (activityId === 'dummy-1' || activityId?.toString().startsWith('dummy-')) {
-                const lat = userLocation?.latitude || 34.0522;
-                const lng = userLocation?.longitude || -118.2437;
-                const dummyMap: Record<string, any> = {
-                    'dummy-1': { id: 'dummy-1', title: 'Beach Volleyball', emoji: '🏐', creator: { username: 'Nam' }, crew: { name: 'LA Squad' }, scheduled_at: new Date(Date.now() + 7200000).toISOString(), latitude: lat - 0.007, longitude: lng - 0.001, threshold: 6 },
-                    'dummy-2': { id: 'dummy-2', title: 'Pizza Run', emoji: '🍕', creator: { username: 'Alex' }, crew: { name: 'Foodies' }, scheduled_at: new Date(Date.now() + 3600000).toISOString(), latitude: lat + 0.007, longitude: lng + 0.004, threshold: 4 },
-                    'dummy-3': { id: 'dummy-3', title: 'Late Night Movie', emoji: '🎬', creator: { username: 'Jordan' }, crew: { name: 'Cinema Crew' }, scheduled_at: new Date(Date.now() + 14400000).toISOString(), latitude: lat + 0.012, longitude: lng + 0.01, threshold: 5 },
-                    'dummy-4': { id: 'dummy-4', title: 'Pickup Basketball', emoji: '🏀', creator: { username: 'Sam' }, crew: { name: 'Ballers' }, scheduled_at: new Date(Date.now() + 1800000).toISOString(), latitude: lat + 0.003, longitude: lng - 0.008, threshold: 10 },
-                };
-                activityData = dummyMap[activityId as string] || dummyMap['dummy-1'];
-                partData = [];
-            } else {
-                const { data, error } = await supabase
-                    .from('activities')
-                    .select('*, creator:profiles!creator_id(username, avatar_url), crew:crews(name)')
-                    .eq('id', activityId)
-                    .single();
-
-                if (error) throw error;
-                activityData = data;
-
-                const { data: dbPartData } = await supabase
-                    .from('activity_participants')
-                    .select('*, profiles(username, avatar_url)')
-                    .eq('activity_id', activityId);
-
-                partData = dbPartData || [];
-            }
-
-            setActivity(activityData);
-
-            // Pad with dummy participants for visual completeness
-            const dummyNames = ['Alex', 'Sam', 'Jordan', 'Taylor', 'Casey', 'Morgan', 'Riley'];
-            const extras = Array.from({ length: Math.max(0, 5 - partData.length) }).map((_, i) => ({
-                id: `dummy-${i}`,
-                status: i < 3 ? 'committed' : 'interested',
-                profiles: { username: dummyNames[i % dummyNames.length] },
-            }));
-            setParticipants([...partData, ...extras]);
-        } catch (error) {
-            console.error('Error fetching activity:', error);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    async function handleRSVP(status: 'committed' | 'interested' | 'declined') {
+    async function handleRSVP(status: RSVPStatus) {
+        if (!activity) return;
         if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                Alert.alert('Vámonos!', 'RSVP saved! (Sign in to sync)');
-                setMyStatus(status);
-                return;
+            await setRSVP(activity.id, status);
+            await load();
+            if (status === 'committed') {
+                Alert.alert("🔥 You're in!", '');
             }
-
-            await supabase.from('activity_participants').upsert({
-                activity_id: activityId,
-                user_id: user.id,
-                status,
-                updated_at: new Date().toISOString(),
-            });
-
-            setMyStatus(status);
-            fetchActivityDetails();
-            Alert.alert(status === 'committed' ? '🔥 You\'re in!' : '👀 Maybe later', '');
         } catch (_) {
             Alert.alert('Error', 'Failed to update RSVP');
         }
+    }
+
+    async function handleShare() {
+        if (!activity) return;
+        try {
+            await Share.share({
+                message: `${activity.emoji} ${activity.title} — ${formatTime(activity.scheduled_at)}. ${activity.committed}/${activity.threshold} down. Vámonos?`,
+            });
+        } catch (_) { }
     }
 
     const confirmedCount = participants.filter(p => p.status === 'committed').length;
     const threshold = activity?.threshold || 1;
     const progress = Math.min(confirmedCount / threshold, 1);
     const isHype = confirmedCount >= threshold;
+    const myStatus = activity?.myStatus ?? null;
+    const distance = formatDistance(
+        userLocation,
+        activity?.latitude != null && activity?.longitude != null
+            ? { latitude: activity.latitude, longitude: activity.longitude }
+            : null,
+    );
 
     if (loading || !activity) {
         return (
@@ -180,6 +162,7 @@ export default function ActivityDetail() {
                 {/* Share button */}
                 <TouchableOpacity
                     style={[styles.shareBtn, { top: insets.top + 12 }]}
+                    onPress={handleShare}
                 >
                     <BlurView intensity={70} tint="systemChromeMaterialLight" style={styles.backBtnBlur}>
                         <Ionicons name="share-outline" size={18} color={Colors.text} />
@@ -198,7 +181,7 @@ export default function ActivityDetail() {
                         </View>
                         <View style={{ flex: 1 }}>
                             <Text style={styles.activityTitle}>{activity.title}</Text>
-                            <Text style={styles.crewText}>{activity.crew?.name} · by {activity.creator?.username}</Text>
+                            <Text style={styles.crewText}>{activity.crew_name ?? 'Open'} · by {activity.creator_name ?? 'Someone'}</Text>
                         </View>
                         {isHype && (
                             <View style={styles.hypeFlag}>
@@ -209,22 +192,18 @@ export default function ActivityDetail() {
 
                     {/* Stats strip */}
                     <View style={styles.statsRow}>
-                        {/* RSVP Progress */}
                         <View style={styles.statCard}>
                             <Text style={styles.statNum}>{confirmedCount}</Text>
                             <Text style={styles.statCaption}>Down</Text>
                         </View>
-
-                        {/* Divider */}
                         <View style={styles.statDivider} />
-
                         <View style={styles.statCard}>
                             <Text style={styles.statNum}>{threshold}</Text>
                             <Text style={styles.statCaption}>Needed</Text>
                         </View>
                         <View style={styles.statDivider} />
                         <View style={styles.statCard}>
-                            <Text style={styles.statNum}>{formatCountdown(activity.scheduled_at)}</Text>
+                            <Text style={styles.statNum}>{formatCountdown(activity.scheduled_at, now)}</Text>
                             <Text style={styles.statCaption}>Starts</Text>
                         </View>
                     </View>
@@ -238,7 +217,7 @@ export default function ActivityDetail() {
                             <Text style={styles.progressPct}>{Math.round(progress * 100)}%</Text>
                         </View>
                         <View style={styles.progressBg}>
-                            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                            <View style={[styles.progressFill, isHype && styles.progressFillHype, { width: `${progress * 100}%` }]} />
                         </View>
                     </View>
 
@@ -250,6 +229,19 @@ export default function ActivityDetail() {
                         <Text style={styles.infoText}>{formatTime(activity.scheduled_at)}</Text>
                     </View>
 
+                    {/* Location info */}
+                    {(activity.location_name || distance) && (
+                        <View style={styles.infoRow}>
+                            <View style={[styles.infoIcon, { backgroundColor: 'rgba(255,107,44,0.1)' }]}>
+                                <Ionicons name="location-outline" size={18} color={Colors.accent} />
+                            </View>
+                            <Text style={styles.infoText}>
+                                {activity.location_name ?? 'Somewhere nearby'}
+                                {distance ? ` · ${distance}` : ''}
+                            </Text>
+                        </View>
+                    )}
+
                     {/* RSVP buttons */}
                     <View style={styles.rsvpRow}>
                         <TouchableOpacity
@@ -258,7 +250,7 @@ export default function ActivityDetail() {
                             activeOpacity={0.85}
                         >
                             <Text style={styles.rsvpPrimaryText}>
-                                {myStatus === 'committed' ? '✓ I\'m In!' : 'I\'m Down! 🚀'}
+                                {myStatus === 'committed' ? "✓ I'm In!" : "I'm Down! 🚀"}
                             </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -271,27 +263,37 @@ export default function ActivityDetail() {
                             </Text>
                         </TouchableOpacity>
                     </View>
+                    {myStatus && myStatus !== 'declined' && (
+                        <TouchableOpacity style={styles.declineBtn} onPress={() => handleRSVP('declined')}>
+                            <Text style={styles.declineText}>Can't make it</Text>
+                        </TouchableOpacity>
+                    )}
+                    {myStatus === 'declined' && (
+                        <Text style={styles.declinedNote}>You're out for this one — tap "I'm Down" to jump back in.</Text>
+                    )}
 
-                    {/* Participants */}
+                    {/* Participants — real people only, no padded fakes */}
                     <Text style={styles.sectionTitle}>Who's in</Text>
-
-                    {/* Horizontal avatar scroll */}
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -Spacing.xxl }} contentContainerStyle={{ paddingHorizontal: Spacing.xxl, gap: 12 }}>
-                        {participants.map((p, idx) => {
-                            const name = p.profiles?.username || 'User';
-                            const committed = p.status === 'committed';
-                            return (
-                                <View key={idx} style={styles.participantChip}>
-                                    <View style={[styles.participantAvatar, { backgroundColor: getColor(name) }]}>
-                                        <Text style={styles.participantInitial}>{name[0]?.toUpperCase()}</Text>
-                                        <View style={[styles.statusDot, { backgroundColor: committed ? Colors.success : Colors.warning }]} />
+                    {participants.length === 0 ? (
+                        <Text style={styles.noParticipants}>Nobody yet. Be the first to say you're down.</Text>
+                    ) : (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -Spacing.xxl }} contentContainerStyle={{ paddingHorizontal: Spacing.xxl, gap: 12 }}>
+                            {participants.map((p) => {
+                                const name = p.username || 'User';
+                                const committed = p.status === 'committed';
+                                return (
+                                    <View key={p.id} style={styles.participantChip}>
+                                        <View style={[styles.participantAvatar, { backgroundColor: getColor(name) }]}>
+                                            <Text style={styles.participantInitial}>{name[0]?.toUpperCase()}</Text>
+                                            <View style={[styles.statusDot, { backgroundColor: committed ? Colors.success : p.status === 'declined' ? Colors.textTertiary : Colors.warning }]} />
+                                        </View>
+                                        <Text style={styles.participantName}>{name.split(' ')[0]}</Text>
+                                        <Text style={styles.participantStatus}>{committed ? '✓ In' : p.status === 'declined' ? '✕ Out' : '~ Maybe'}</Text>
                                     </View>
-                                    <Text style={styles.participantName}>{name.split(' ')[0]}</Text>
-                                    <Text style={styles.participantStatus}>{committed ? '✓' : '~'}</Text>
-                                </View>
-                            );
-                        })}
-                    </ScrollView>
+                                );
+                            })}
+                        </ScrollView>
+                    )}
                 </ScrollView>
             </View>
         </View>
@@ -453,6 +455,9 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.success,
         borderRadius: Radius.pill,
     },
+    progressFillHype: {
+        backgroundColor: Colors.accent,
+    },
 
     // Info row
     infoRow: {
@@ -462,7 +467,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.background,
         padding: Spacing.md,
         borderRadius: Radius.lg,
-        marginBottom: Spacing.xxl,
+        marginBottom: Spacing.md,
     },
     infoIcon: {
         width: 34,
@@ -476,13 +481,15 @@ const styles = StyleSheet.create({
         ...Typography.callout,
         color: Colors.text,
         fontWeight: '500',
+        flex: 1,
     },
 
     // RSVP buttons
     rsvpRow: {
         flexDirection: 'row',
         gap: 12,
-        marginBottom: Spacing.xxxl,
+        marginTop: Spacing.md,
+        marginBottom: Spacing.md,
     },
     rsvpBtn: {
         flex: 1,
@@ -518,11 +525,33 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         fontSize: 16,
     },
+    declineBtn: {
+        alignItems: 'center',
+        paddingVertical: 8,
+        marginBottom: Spacing.xl,
+    },
+    declineText: {
+        ...Typography.footnote,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+        textDecorationLine: 'underline',
+    },
+    declinedNote: {
+        ...Typography.footnote,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: Spacing.xl,
+    },
 
     // Participants
     sectionTitle: {
         ...Typography.title3,
         color: Colors.text,
+        marginBottom: Spacing.lg,
+    },
+    noParticipants: {
+        ...Typography.subhead,
+        color: Colors.textSecondary,
         marginBottom: Spacing.lg,
     },
     participantChip: {

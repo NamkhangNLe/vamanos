@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Session } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import {
@@ -14,25 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
-
-const DUMMY_CREWS = [
-  {
-    id: 'd1',
-    name: 'LA Squad',
-    members: [{ profiles: { username: 'Nam' } }, { profiles: { username: 'Alex' } }, { profiles: { username: 'Sam' } }, { profiles: { username: 'Jordan' } }],
-  },
-  {
-    id: 'd2',
-    name: 'Foodies',
-    members: [{ profiles: { username: 'Maya' } }, { profiles: { username: 'Chris' } }],
-  },
-  {
-    id: 'd3',
-    name: 'Ballers',
-    members: [{ profiles: { username: 'Taylor' } }, { profiles: { username: 'Morgan' } }, { profiles: { username: 'Casey' } }],
-  },
-];
+import { createCrew, fetchCrews, type Crew } from '../../lib/store';
 
 const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
 
@@ -44,104 +25,110 @@ function getColor(name: string) {
 
 export default function AmigosScreen() {
   const insets = useSafeAreaInsets();
-  const [session, setSession] = useState<Session | null>(null);
-  const [crews, setCrews] = useState<any[]>(DUMMY_CREWS);
-  const [loading, setLoading] = useState(false);
+  const [crews, setCrews] = useState<Crew[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newCrewName, setNewCrewName] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchCrews(session.user.id);
-    });
+    loadCrews();
   }, []);
 
-  async function fetchCrews(userId: string) {
+  async function loadCrews() {
     try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('crews')
-        .select('*, members:crew_members(user_id, profiles(username, avatar_url))')
-        .order('created_at', { ascending: false });
-
-      if (!error && data && data.length > 0) {
-        setCrews(data);
-      }
-    } catch (_) { }
-    finally { setLoading(false); }
-  }
-
-  async function handleCreateCrew() {
-    if (!newCrewName.trim()) return;
-    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    if (!session?.user) {
-      Alert.alert('Sign in required', 'You need to be signed in to create a crew.');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const { data: crew, error: crewError } = await supabase
-        .from('crews')
-        .insert({ name: newCrewName, created_by: session.user.id })
-        .select()
-        .single();
-
-      if (crewError) throw crewError;
-
-      await supabase.from('crew_members').insert({ crew_id: crew.id, user_id: session.user.id });
-
-      setNewCrewName('');
-      fetchCrews(session.user.id);
+      setCrews(await fetchCrews());
     } catch (_) {
-      Alert.alert('Error', 'Failed to create crew');
+      // keep whatever we have
     } finally {
       setLoading(false);
     }
   }
 
-  const renderCrew = ({ item }: { item: any }) => {
+  async function handleCreateCrew() {
+    if (!newCrewName.trim() || loading) return;
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    try {
+      setLoading(true);
+      const crew = await createCrew(newCrewName.trim());
+      if (!crew) throw new Error('Crew was not created');
+      setNewCrewName('');
+      await loadCrews();
+    } catch (error: any) {
+      Alert.alert('Error', error?.message ?? 'Failed to create crew');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const renderCrew = ({ item }: { item: Crew }) => {
     const members = item.members || [];
+    const expanded = expandedId === item.id;
     return (
-      <TouchableOpacity style={styles.crewCard} activeOpacity={0.85}>
-        <View style={styles.crewLeft}>
-          <View style={styles.crewIconBg}>
-            <Text style={styles.crewIcon}>👥</Text>
-          </View>
-        </View>
-        <View style={styles.crewInfo}>
-          <View style={styles.crewTitleRow}>
-            <Text style={styles.crewName}>{item.name}</Text>
-            <View style={styles.memberBadge}>
-              <Text style={styles.memberBadgeText}>{members.length}</Text>
+      <View style={styles.crewCard}>
+        <TouchableOpacity
+          style={styles.crewRow}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setExpandedId(expanded ? null : item.id);
+          }}
+        >
+          <View style={styles.crewLeft}>
+            <View style={styles.crewIconBg}>
+              <Text style={styles.crewIcon}>👥</Text>
             </View>
           </View>
-          {/* Avatar stack */}
-          <View style={styles.avatarStack}>
-            {members.slice(0, 5).map((m: any, idx: number) => {
-              const name = m.profiles?.username || '?';
-              return (
-                <View
-                  key={idx}
-                  style={[
-                    styles.stackAvatar,
-                    { backgroundColor: getColor(name), marginLeft: idx === 0 ? 0 : -8, zIndex: 10 - idx }
-                  ]}
-                >
-                  <Text style={styles.stackAvatarText}>{name[0].toUpperCase()}</Text>
-                </View>
-              );
-            })}
-            {members.length > 5 && (
-              <View style={[styles.stackAvatar, { backgroundColor: Colors.backgroundTertiary, marginLeft: -8 }]}>
-                <Text style={[styles.stackAvatarText, { color: Colors.textSecondary }]}>+{members.length - 5}</Text>
+          <View style={styles.crewInfo}>
+            <View style={styles.crewTitleRow}>
+              <Text style={styles.crewName}>{item.name}</Text>
+              <View style={styles.memberBadge}>
+                <Text style={styles.memberBadgeText}>{members.length}</Text>
               </View>
-            )}
+            </View>
+            {/* Avatar stack */}
+            <View style={styles.avatarStack}>
+              {members.slice(0, 5).map((m, idx) => {
+                const name = m.username || '?';
+                return (
+                  <View
+                    key={m.user_id}
+                    style={[
+                      styles.stackAvatar,
+                      { backgroundColor: getColor(name), marginLeft: idx === 0 ? 0 : -8, zIndex: 10 - idx }
+                    ]}
+                  >
+                    <Text style={styles.stackAvatarText}>{name[0].toUpperCase()}</Text>
+                  </View>
+                );
+              })}
+              {members.length > 5 && (
+                <View style={[styles.stackAvatar, { backgroundColor: Colors.backgroundTertiary, marginLeft: -8 }]}>
+                  <Text style={[styles.stackAvatarText, { color: Colors.textSecondary }]}>+{members.length - 5}</Text>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
-      </TouchableOpacity>
+          <Ionicons
+            name={expanded ? 'chevron-down' : 'chevron-forward'}
+            size={16}
+            color={Colors.textTertiary}
+          />
+        </TouchableOpacity>
+
+        {expanded && (
+          <View style={styles.memberList}>
+            {members.map((m) => (
+              <View key={m.user_id} style={styles.memberRow}>
+                <View style={[styles.memberAvatar, { backgroundColor: getColor(m.username || '?') }]}>
+                  <Text style={styles.memberAvatarText}>{(m.username || '?')[0].toUpperCase()}</Text>
+                </View>
+                <Text style={styles.memberName}>{m.username || 'Someone'}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
     );
   };
 
@@ -150,7 +137,7 @@ export default function AmigosScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Amigos</Text>
-        <Text style={styles.headerSub}>Your crews</Text>
+        <Text style={styles.headerSub}>Your crews — tap one to see who's in it</Text>
       </View>
 
       <FlatList
@@ -159,11 +146,8 @@ export default function AmigosScreen() {
         renderItem={renderCrew}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
-        onRefresh={() => session && fetchCrews(session.user.id)}
+        onRefresh={loadCrews}
         refreshing={loading}
-        ListHeaderComponent={
-          crews.length === 0 ? null : undefined
-        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>👯</Text>
@@ -229,16 +213,18 @@ const styles = StyleSheet.create({
 
   // Crew card
   crewCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.backgroundElevated,
     borderRadius: Radius.xl,
     padding: Spacing.lg,
     marginBottom: 10,
-    gap: Spacing.md,
     ...Shadows.small,
     borderWidth: 1,
     borderColor: Colors.separatorLight,
+  },
+  crewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
   },
   crewLeft: {},
   crewIconBg: {
@@ -293,6 +279,37 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: 10,
     fontWeight: '700',
+  },
+
+  // Expanded member list
+  memberList: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.separatorLight,
+    gap: 8,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  memberAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  memberAvatarText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  memberName: {
+    ...Typography.callout,
+    color: Colors.text,
+    fontWeight: '500',
   },
 
   // Empty state

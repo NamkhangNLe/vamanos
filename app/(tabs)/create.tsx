@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
+    Alert,
     Platform,
     ScrollView,
     StyleSheet,
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActivityCategories, Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
+import { createActivity, emojiForCategory } from '../../lib/store';
 
 const TIME_PRESETS = [
     { label: 'Now!', offset: 0 },
@@ -57,42 +58,28 @@ export default function CreateScreen() {
     }
 
     async function handleCreate() {
-        if (!title.trim()) return;
+        if (!title.trim() || isSubmitting) return;
         if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
         try {
             setIsSubmitting(true);
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user) {
-                // For demo, just navigate back
-                router.replace('/(tabs)');
-                return;
-            }
-
-            const { data: crewData } = await supabase
-                .from('crew_members')
-                .select('crew_id')
-                .eq('user_id', user.id)
-                .limit(1)
-                .single();
-
             const scheduledAt = new Date(Date.now() + selectedTime * 60000).toISOString();
 
-            await supabase.from('activities').insert({
+            const activity = await createActivity({
                 title: title.trim(),
-                creator_id: user.id,
-                crew_id: crewData?.crew_id,
+                category: selectedCategory,
                 scheduled_at: scheduledAt,
                 threshold,
-                category: selectedCategory,
-                latitude: userLocation?.latitude,
-                longitude: userLocation?.longitude,
+                latitude: userLocation?.latitude ?? null,
+                longitude: userLocation?.longitude ?? null,
             });
 
-            router.replace('/(tabs)');
-        } catch (_) {
-            router.replace('/(tabs)');
+            if (!activity) throw new Error('Activity was not created');
+            router.replace(`/(tabs)` as any);
+        } catch (error: any) {
+            // Fail loudly: the old version silently navigated away and the
+            // plan never existed. The user should know it didn't save.
+            Alert.alert('Could not create activity', error?.message ?? 'Something went wrong. Try again.');
         } finally {
             setIsSubmitting(false);
         }
@@ -118,7 +105,7 @@ export default function CreateScreen() {
                 {/* Title */}
                 <Text style={styles.label}>What are we doing?</Text>
                 <View style={styles.titleInputWrapper}>
-                    <Text style={styles.titleEmoji}>{activeCategory?.emoji || '✨'}</Text>
+                    <Text style={styles.titleEmoji}>{selectedCategory ? emojiForCategory(selectedCategory) : '✨'}</Text>
                     <TextInput
                         style={styles.titleInput}
                         placeholder="Beach volleyball, food run..."

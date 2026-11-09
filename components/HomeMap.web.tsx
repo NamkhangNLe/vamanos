@@ -3,6 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import React from 'react';
 import { MapContainer, Marker, TileLayer } from 'react-leaflet';
 import { StyleSheet, View } from 'react-native';
+import { offsetFor } from '../lib/geo';
 
 interface HomeMapProps {
     activities: any[];
@@ -66,9 +67,10 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
 
     return (
         <View style={StyleSheet.absoluteFill}>
-            {/* CSS to fix leaflet stacking issues in Expo web */}
+            {/* Scoped to this map: 100% of the parent, never 100vh (the detail
+                hero is only 320px tall and 100vh would overflow it). */}
             <style>{`
-        .leaflet-container { height: 100vh; width: 100vw; z-index: 1; }
+        .leaflet-container { height: 100%; width: 100%; z-index: 1; }
         .custom-leaflet-icon { background: none; border: none; }
       `}</style>
 
@@ -86,8 +88,11 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
                 />
 
                 {activities.map((activity, idx) => {
-                    const lat = activity.latitude || initialLat + (Math.random() - 0.5) * 0.01;
-                    const lng = activity.longitude || initialLng + (Math.random() - 0.5) * 0.01;
+                    // Deterministic fallback position (stable per activity id),
+                    // so pins never jump around between renders.
+                    const { dLat, dLng } = offsetFor(activity.id || `idx-${idx}`, 0.005);
+                    const lat = activity.latitude ?? initialLat + dLat;
+                    const lng = activity.longitude ?? initialLng + dLng;
                     return (
                         <Marker
                             key={activity.id || idx}

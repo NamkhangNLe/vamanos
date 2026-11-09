@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Colors, Shadows } from '../constants/theme';
+import { offsetFor } from '../lib/geo';
 
 interface HomeMapProps {
     activities: any[];
@@ -40,8 +41,11 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
             onPress={onMapPress}
         >
             {activities.map((activity: any, idx: number) => {
-                const lat = activity.latitude || initialLat + (Math.random() - 0.5) * 0.01;
-                const lng = activity.longitude || initialLng + (Math.random() - 0.5) * 0.01;
+                // Deterministic fallback position (stable per activity id),
+                // so pins never jump around between renders.
+                const { dLat, dLng } = offsetFor(activity.id || `idx-${idx}`, 0.005);
+                const lat = activity.latitude ?? initialLat + dLat;
+                const lng = activity.longitude ?? initialLng + dLng;
                 return (
                     <Marker
                         key={activity.id || idx}

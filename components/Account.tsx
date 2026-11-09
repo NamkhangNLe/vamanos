@@ -19,7 +19,7 @@ export default function Account({ session }: { session: Session }) {
       setLoading(true)
       if (!session?.user) throw new Error('No user on the session!')
 
-      const { data, error, status } = await supabase
+      const { data, error, status } = await supabase!
         .from('profiles')
         .select(`username, website, avatar_url`)
         .eq('id', session?.user.id)
@@ -63,7 +63,7 @@ export default function Account({ session }: { session: Session }) {
         updated_at: new Date(),
       }
 
-      const { error } = await supabase.from('profiles').upsert(updates)
+      const { error } = await supabase!.from('profiles').upsert(updates)
 
       if (error) {
         throw error
@@ -123,7 +123,7 @@ export default function Account({ session }: { session: Session }) {
       <View style={styles.verticallySpaced}>
         <Button
           title="Sign Out"
-          onPress={() => supabase.auth.signOut()}
+          onPress={() => supabase!.auth.signOut()}
           buttonStyle={styles.secondaryButton}
           titleStyle={styles.secondaryButtonTitle}
         />

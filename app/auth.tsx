@@ -12,13 +12,20 @@ export default function AuthScreen() {
   const router = useRouter();
 
   useEffect(() => {
+    // Local mode has no Supabase client and no sessions: the waitlist
+    // screen below is the whole flow.
+    if (!supabase) return;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const handleWaitlistSuccess = async () => {

@@ -1,71 +1,61 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Session } from '@supabase/supabase-js';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 export default function RootLayout() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isBypassed, setIsBypassed] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const segments = useSegments();
   const router = useRouter();
 
-  // Initial setup: Load session and initial bypass status
+  // Initial setup: session + waitlist bypass
   useEffect(() => {
-    async function setup() {
-      // 1. Get session
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
+    let subscription: { unsubscribe: () => void } | null = null;
 
-      // 2. Initial bypass check
-      const bypass = await AsyncStorage.getItem('vamanos_waitlist_bypassed');
-      if (bypass === 'true') {
-        setIsBypassed(true);
+    async function setup() {
+      // Local mode (no Supabase configured): no accounts, straight in.
+      if (!isSupabaseConfigured || !supabase) {
+        setAuthed(true);
+        setInitialized(true);
+        return;
       }
 
+      const { data } = await supabase.auth.getSession();
+      const bypass = await AsyncStorage.getItem('vamanos_waitlist_bypassed');
+      setAuthed(!!data.session || bypass === 'true');
       setInitialized(true);
+
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        setAuthed(!!session);
+      });
+      subscription = listener.subscription;
     }
 
     setup();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
     return () => {
-      authListener.subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
-  // Navigation Guard logic
+  // Navigation guard
   useEffect(() => {
     if (!initialized) return;
 
     async function evaluateNavigation() {
-      // Re-verify bypass status in case it was just set in Another screen
       const bypass = await AsyncStorage.getItem('vamanos_waitlist_bypassed');
-      const currentlyBypassed = bypass === 'true';
-      if (currentlyBypassed !== isBypassed) {
-        setIsBypassed(currentlyBypassed);
-        // Effect will re-run after state update
-        return;
-      }
-
+      const hasAccess = authed || bypass === 'true';
       const inAuthGroup = segments[0] === 'auth';
-      const hasAccess = !!session || currentlyBypassed;
 
       if (!hasAccess && !inAuthGroup) {
-        // Not logged in or bypassed? Send to signup
         router.replace('/auth');
       } else if (hasAccess && inAuthGroup) {
-        // Logged in or bypassed? Go to the app
         router.replace('/');
       }
     }
 
     evaluateNavigation();
-  }, [session, isBypassed, initialized, segments]);
+  }, [authed, initialized, segments]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

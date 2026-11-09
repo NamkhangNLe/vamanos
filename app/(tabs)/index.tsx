@@ -19,73 +19,18 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HomeMap from '../../components/HomeMap';
 import { ActivityCategories, Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { fetchActivities, subscribeToActivityChanges, type Activity } from '../../lib/store';
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Bottom sheet snap points
 const SNAP_FULL = 0.12;      // full open (12% from top)
 const SNAP_HALF = 0.55;      // half open (55% from top)
 const SNAP_COLLAPSED = 0.80; // peek (80% from top)
 
-// Dummy activity data for when DB is empty
-const DUMMY_ACTIVITIES = [
-  {
-    id: 'dummy-1',
-    title: 'Beach Volleyball',
-    emoji: '🏐',
-    creator: { username: 'Nam' },
-    crew: { name: 'LA Squad' },
-    scheduled_at: new Date(Date.now() + 7200000).toISOString(),
-    latitude: 34.0125,
-    longitude: -118.496,
-    threshold: 6,
-    committed: 4,
-    category: 'sports',
-  },
-  {
-    id: 'dummy-2',
-    title: 'Pizza Run 🍕',
-    emoji: '🍕',
-    creator: { username: 'Alex' },
-    crew: { name: 'Foodies' },
-    scheduled_at: new Date(Date.now() + 3600000).toISOString(),
-    latitude: 34.0195,
-    longitude: -118.491,
-    threshold: 4,
-    committed: 3,
-    category: 'food',
-  },
-  {
-    id: 'dummy-3',
-    title: 'Late Night Movie',
-    emoji: '🎬',
-    creator: { username: 'Jordan' },
-    crew: { name: 'Cinema Crew' },
-    scheduled_at: new Date(Date.now() + 14400000).toISOString(),
-    latitude: 34.023,
-    longitude: -118.485,
-    threshold: 5,
-    committed: 2,
-    category: 'movies',
-  },
-  {
-    id: 'dummy-4',
-    title: 'Pickup Basketball',
-    emoji: '🏀',
-    creator: { username: 'Sam' },
-    crew: { name: 'Ballers' },
-    scheduled_at: new Date(Date.now() + 1800000).toISOString(),
-    latitude: 34.016,
-    longitude: -118.502,
-    threshold: 10,
-    committed: 7,
-    category: 'sports',
-  },
-];
-
-function formatCountdown(date: string) {
-  const diff = new Date(date).getTime() - Date.now();
+function formatCountdown(date: string, now: number) {
+  const diff = new Date(date).getTime() - now;
   if (diff <= 0) return 'Now!';
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
@@ -94,12 +39,12 @@ function formatCountdown(date: string) {
 }
 
 export default function Index() {
-  const [activities, setActivities] = useState<any[]>(DUMMY_ACTIVITIES);
-  const [loading, setLoading] = useState(false);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [query, setQuery] = useState('');
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
-  const [newActivityTitle, setNewActivityTitle] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [now, setNow] = useState(Date.now());
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -165,62 +110,58 @@ export default function Index() {
     }).start();
   }
 
-  useEffect(() => {
-    fetchActivities();
-    getUserLocation();
-  }, []);
-
-  async function getUserLocation() {
+  async function loadActivities() {
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.warn('Permission to access location was denied');
-        return;
-      }
-      let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const currentLoc = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-      setUserLocation(currentLoc);
-
-      // Update activities if they are dummy ones to be near the user
-      setActivities(prev => prev.map((a, i) => {
-        if (a.id.startsWith('dummy-')) {
-          return {
-            ...a,
-            latitude: currentLoc.latitude + (Math.random() - 0.5) * 0.03,
-            longitude: currentLoc.longitude + (Math.random() - 0.5) * 0.03,
-          };
-        }
-        return a;
-      }));
+      const data = await fetchActivities();
+      setActivities(data);
     } catch (_) {
-      console.warn('Could not fetch location');
-    }
-  }
-
-  async function fetchActivities() {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('activities')
-        .select(`*, creator:profiles!creator_id(username, avatar_url), crew:crews(name)`)
-        .order('scheduled_at', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        setActivities(data);
-      }
-    } catch (_) {
-      // use dummy data on error
+      // keep whatever we have; the empty state covers it
     } finally {
       setLoading(false);
     }
   }
 
-  const filteredActivities = selectedCategory === 'all'
-    ? activities
-    : activities.filter(a => a.category === selectedCategory);
+  useEffect(() => {
+    loadActivities();
+    getUserLocation();
+    // Live updates: when anyone RSVPs, the list refreshes.
+    const unsubscribe = subscribeToActivityChanges(() => loadActivities());
+    // Countdowns tick every 30s so "In 29m" stays honest.
+    const tick = setInterval(() => setNow(Date.now()), 30000);
+    return () => {
+      unsubscribe();
+      clearInterval(tick);
+    };
+  }, []);
+
+  async function getUserLocation() {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Permission to access location was denied');
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+    } catch (_) {
+      console.warn('Could not fetch location');
+    }
+  }
+
+  const filteredActivities = activities.filter((a) => {
+    if (selectedCategory !== 'all' && a.category !== selectedCategory) return false;
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      const hay = `${a.title} ${a.crew_name ?? ''} ${a.creator_name ?? ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const liveCount = activities.filter((a) => a.committed >= a.threshold).length;
 
   const renderCategoryPill = ({ item }: { item: typeof ActivityCategories[number] }) => {
     const active = selectedCategory === item.id;
@@ -239,7 +180,7 @@ export default function Index() {
     );
   };
 
-  const renderActivity = ({ item }: { item: any }) => {
+  const renderActivity = ({ item }: { item: Activity }) => {
     const committed = item.committed ?? 0;
     const threshold = item.threshold ?? 1;
     const progress = Math.min(committed / threshold, 1);
@@ -265,12 +206,13 @@ export default function Index() {
             {hype && <View style={styles.hypeTag}><Text style={styles.hypeTagText}>🔥 On!</Text></View>}
           </View>
           <Text style={styles.cardMeta}>
-            {item.crew?.name || 'Local'} · {formatCountdown(item.scheduled_at)}
+            {item.crew_name || 'Open'} · {formatCountdown(item.scheduled_at, now)}
+            {item.myStatus === 'committed' ? ' · You\'re in' : ''}
           </Text>
-          {/* RSVP progress bar */}
+          {/* RSVP progress bar — counts come from real participants */}
           <View style={styles.progressRow}>
             <View style={styles.progressBar}>
-              <Animated.View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+              <View style={[styles.progressFill, hype && styles.progressFillHype, { width: `${progress * 100}%` }]} />
             </View>
             <Text style={styles.progressLabel}>{committed}/{threshold}</Text>
           </View>
@@ -297,9 +239,13 @@ export default function Index() {
           <View style={styles.headerInner}>
             <View>
               <Text style={styles.headerGreeting}>Hey there 👋</Text>
-              <Text style={styles.headerSub}>What's the vibe today?</Text>
+              <Text style={styles.headerSub}>
+                {liveCount > 0
+                  ? `${liveCount} ${liveCount === 1 ? 'plan is' : 'plans are'} locked in — what's the vibe?`
+                  : "What's the vibe today?"}
+              </Text>
             </View>
-            <TouchableOpacity style={styles.avatarButton}>
+            <TouchableOpacity style={styles.avatarButton} onPress={() => router.push('/(tabs)/profile')}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>N</Text>
               </View>
@@ -316,6 +262,17 @@ export default function Index() {
           <View style={styles.dragger} />
         </View>
 
+        {/* Demo-mode banner: honest about where the data lives */}
+        {!isSupabaseConfigured && (
+          <TouchableOpacity
+            style={styles.demoBanner}
+            onPress={() => router.push('/(tabs)/profile')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.demoBannerText}>👀 Demo data — connect Supabase in Profile to go live with your squad</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Search Bar */}
         <View style={styles.searchRow}>
           <View style={styles.searchBar}>
@@ -324,7 +281,10 @@ export default function Index() {
               style={styles.searchInput}
               placeholder="What are we doing?"
               placeholderTextColor={Colors.textSecondary}
+              value={query}
+              onChangeText={setQuery}
               onFocus={() => snapSheet(SNAP_FULL)}
+              returnKeyType="search"
             />
           </View>
           <TouchableOpacity
@@ -369,7 +329,7 @@ export default function Index() {
               <Text style={styles.emptySubtitle}>Be the spark — start something!</Text>
             </View>
           }
-          onRefresh={fetchActivities}
+          onRefresh={loadActivities}
           refreshing={loading}
         />
       </Animated.View>
@@ -379,6 +339,7 @@ export default function Index() {
         style={[styles.locationButton, { bottom: insets.bottom + 100 }]}
         onPress={() => {
           if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          getUserLocation();
         }}
       >
         <Ionicons name="locate" size={20} color={Colors.primary} />
@@ -391,27 +352,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#E8E8ED',
-  },
-
-  // Map
-  mapFallback: {
-    backgroundColor: '#E8EDF0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  mapFallbackText: {
-    fontSize: 48,
-  },
-  mapPin: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 8,
-    ...Shadows.medium,
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  mapPinEmoji: {
-    fontSize: 18,
   },
 
   // Floating header
@@ -480,6 +420,22 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: Colors.backgroundTertiary,
     borderRadius: Radius.pill,
+  },
+
+  // Demo banner
+  demoBanner: {
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.sm,
+    backgroundColor: 'rgba(255,149,0,0.1)',
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+  },
+  demoBannerText: {
+    ...Typography.caption1,
+    color: '#8a5a00',
+    fontWeight: '600',
+    textAlign: 'center',
   },
 
   // Search row
@@ -645,6 +601,9 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: Colors.success,
     borderRadius: Radius.pill,
+  },
+  progressFillHype: {
+    backgroundColor: Colors.accent,
   },
   progressLabel: {
     ...Typography.caption2,

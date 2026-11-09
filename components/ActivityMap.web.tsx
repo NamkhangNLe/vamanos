@@ -3,6 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import React from 'react';
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
 import { StyleSheet, View } from 'react-native';
+import { offsetFor } from '../lib/geo';
 
 export interface ActivityMapProps {
     activity: any;
@@ -100,9 +101,10 @@ export default function ActivityMap({ activity, participants, userLocation }: Ac
 
     return (
         <View style={StyleSheet.absoluteFill}>
-            {/* Fix leaflet styling specifically for expo web sheets */}
+            {/* Scoped to this map: 100% of the parent, never 100vh (the detail
+                hero is only 320px tall and 100vh would overflow it). */}
             <style>{`
-                .leaflet-container { height: 100vh; width: 100vw; z-index: 1; }
+                .leaflet-container { height: 100%; width: 100%; z-index: 1; }
                 .custom-leaflet-icon { background: none; border: none; }
             `}</style>
             <MapContainer
@@ -129,18 +131,20 @@ export default function ActivityMap({ activity, participants, userLocation }: Ac
                     />
                 )}
 
-                {/* Participant pins */}
+                {/* Participant pins — deterministic offsets per participant id,
+                    so pins stay put instead of jumping on every render. */}
                 {participants
                     .filter(p => p.status === 'committed')
                     .slice(0, 8)
                     .map((p, idx) => {
-                        const name = p.profiles?.username || '?';
+                        const name = p.profiles?.username || p.username || '?';
+                        const { dLat, dLng } = offsetFor(p.id || `${name}-${idx}`, 0.01);
                         return (
                             <Marker
-                                key={idx}
+                                key={p.id || idx}
                                 position={[
-                                    centerLat + (Math.random() - 0.5) * 0.02,
-                                    centerLng + (Math.random() - 0.5) * 0.02,
+                                    centerLat + dLat,
+                                    centerLng + dLng,
                                 ]}
                                 icon={createFriendIcon(name, getFriendColor(name))}
                             >

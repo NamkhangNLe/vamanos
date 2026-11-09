@@ -4,8 +4,8 @@ import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import { Alert, Dimensions, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../constants/theme';
-import { supabase } from '../lib/supabase';
 import HomeMap from './HomeMap';
+import { joinWaitlist } from '../lib/store';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -17,8 +17,6 @@ export default function Auth({ onSuccess }: AuthProps) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [joined, setJoined] = useState(false);
-  // Start with a high realistic number for social proof
-  const [waitlistCount, setWaitlistCount] = useState(1248);
 
   const handleJoinWaitlist = async () => {
     if (!email || !email.includes('@')) {
@@ -30,14 +28,9 @@ export default function Auth({ onSuccess }: AuthProps) {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      // 1. Store in Supabase 'waitlist' table
-      const { error: dbError } = await supabase
-        .from('waitlist')
-        .insert([{ email }]);
-
-      if (dbError && dbError.code !== '23505') { // Ignore unique constraint (already joined)
-        console.warn('DB storage error:', dbError);
-      }
+      // 1. Store in Supabase 'waitlist' table when configured.
+      //    In local mode this is a no-op and the flow still works.
+      await joinWaitlist(email);
 
       /**
        * "Anonymous" Email Integration via FormSubmit
@@ -56,18 +49,17 @@ export default function Auth({ onSuccess }: AuthProps) {
         })
       });
 
-      if (response.ok || (dbError && dbError.code === '23505')) {
-        setJoined(true);
-        setWaitlistCount(prev => prev + 1);
-        if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-        // Short delay for the "Success" animation before entering the app
-        setTimeout(() => {
-          if (onSuccess) onSuccess();
-        }, 1500);
-      } else {
-        throw new Error('Failed to join');
+      if (!response.ok) {
+        console.warn('Waitlist notification failed, letting them in anyway');
       }
+
+      setJoined(true);
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Short delay for the "Success" animation before entering the app
+      setTimeout(() => {
+        if (onSuccess) onSuccess();
+      }, 1500);
     } catch (error: any) {
       console.warn('Waitlist notification error:', error);
       // Graceful fallback: let them in anyway so we don't block conversion
@@ -113,10 +105,6 @@ export default function Auth({ onSuccess }: AuthProps) {
                 <Text style={styles.successSubtitle}>
                   Redirecting you to the map...
                 </Text>
-                <View style={styles.statsContainer}>
-                  <Text style={styles.statsCount}>{waitlistCount.toLocaleString()}</Text>
-                  <Text style={styles.statsLabel}>Friends currently in line</Text>
-                </View>
               </View>
             ) : (
               <View style={styles.form}>
@@ -184,11 +172,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.92)',
     borderRadius: Radius.xxl,
     padding: Spacing.xxl,
-    ...Platform.select({
-      ios: Shadows.large,
-      android: Shadows.medium,
-      web: { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.1, shadowRadius: 40 }
-    }),
+    ...Shadows.large,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.8)',
   },
@@ -287,25 +271,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.xl,
     paddingHorizontal: Spacing.md,
-  },
-  statsContainer: {
-    backgroundColor: Colors.primary + '10',
-    padding: Spacing.xl,
-    borderRadius: Radius.xl,
-    alignItems: 'center',
-    width: '100%',
-  },
-  statsCount: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  statsLabel: {
-    ...Typography.caption1,
-    color: Colors.primary,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
   },
 });
