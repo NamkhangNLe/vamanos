@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Colors, Shadows } from '../constants/theme';
-import { offsetFor } from '../lib/geo';
+import { activityCentroid, offsetFor } from '../lib/geo';
 
 interface HomeMapProps {
     activities: any[];
@@ -20,8 +20,14 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
     const Marker = RNMaps.Marker;
     const PROVIDER_DEFAULT = RNMaps.PROVIDER_DEFAULT;
 
-    const initialLat = userLocation?.latitude || 34.0522;
-    const initialLng = userLocation?.longitude || -118.2437;
+    // Default center: the user's location when known, else the centroid of
+    // the activities that carry real coordinates, else downtown LA. The old
+    // hardcoded downtown LA default put the map ~25km east of every demo
+    // pin (all in Santa Monica), so the map loaded with zero markers
+    // visible.
+    const centroid = activityCentroid(activities);
+    const initialLat = userLocation?.latitude ?? centroid?.latitude ?? 34.0522;
+    const initialLng = userLocation?.longitude ?? centroid?.longitude ?? -118.2437;
 
     return (
         <MapView

@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import React, { useEffect } from 'react';
 import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import { StyleSheet, View } from 'react-native';
-import { offsetFor } from '../lib/geo';
+import { activityCentroid, offsetFor } from '../lib/geo';
 
 interface HomeMapProps {
     activities: any[];
@@ -81,10 +81,50 @@ function MapResizer() {
     return null;
 }
 
+// Fit the view to every marker on mount (and whenever the pins move), so
+// the markers are on screen on load instead of miles off-screen. Runs just
+// after MapResizer's invalidateSize calls, so the fit is computed against
+// the settled container size. Capped at zoom 14 so a tight cluster of pins
+// doesn't zoom all the way in.
+function MapFitter({ positions }: { positions: [number, number][] }) {
+    const map = useMap();
+    const key = positions.map((p) => p.join(',')).join('|');
+    useEffect(() => {
+        if (positions.length === 0) return;
+        const bounds = L.latLngBounds(positions);
+        const fit = () => map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14 });
+        const t1 = setTimeout(fit, 150);
+        const t2 = setTimeout(fit, 650);
+        return () => {
+            clearTimeout(t1);
+            clearTimeout(t2);
+        };
+    }, [map, key]);
+    return null;
+}
+
 // Web version - Uses react-leaflet and OpenStreetMap tiles (FREE, NO API KEY needed)
 export default function HomeMap({ activities, userLocation, onPinPress, onMapPress }: HomeMapProps) {
-    const initialLat = userLocation?.latitude || 34.0522;
-    const initialLng = userLocation?.longitude || -118.2437;
+    // Default center: the user's location when known, else the centroid of
+    // the activities that carry real coordinates, else downtown LA. The old
+    // hardcoded downtown LA default put the map ~25km east of every demo
+    // pin (all in Santa Monica), so the map loaded with zero markers
+    // visible. The centroid is computed from the data, not hardcoded to
+    // any neighborhood, so it stays right as activities change.
+    const centroid = activityCentroid(activities);
+    const initialLat = userLocation?.latitude ?? centroid?.latitude ?? 34.0522;
+    const initialLng = userLocation?.longitude ?? centroid?.longitude ?? -118.2437;
+
+    // Marker positions, same logic as the render below (explicit coords when
+    // present, else a deterministic offset from the center), so the fitter
+    // covers exactly the pins on screen.
+    const markerPositions: [number, number][] = activities.map((activity, idx) => {
+        const { dLat, dLng } = offsetFor(activity.id || `idx-${idx}`, 0.005);
+        return [
+            activity.latitude ?? initialLat + dLat,
+            activity.longitude ?? initialLng + dLng,
+        ];
+    });
 
     return (
         <View style={StyleSheet.absoluteFill}>
@@ -104,6 +144,7 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
                 style={{ height: '100%', width: '100%' }}
             >
                 <MapResizer />
+                <MapFitter positions={markerPositions} />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"

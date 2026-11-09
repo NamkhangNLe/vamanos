@@ -22,6 +22,23 @@ export function offsetFor(id: string, spread = 0.01): { dLat: number; dLng: numb
   return { dLat, dLng }
 }
 
+/** Centroid of the items that carry explicit coordinates, or null when none do.
+ *  Used as the map's default center so the markers are on screen on load,
+ *  instead of a hardcoded city center that can be miles from every pin. */
+export function activityCentroid(
+  activities: { latitude?: number | null; longitude?: number | null }[],
+): { latitude: number; longitude: number } | null {
+  const pinned = activities.filter(
+    (a) => a.latitude != null && a.longitude != null,
+  );
+  if (pinned.length === 0) return null;
+  const latitude =
+    pinned.reduce((s, a) => s + (a.latitude as number), 0) / pinned.length;
+  const longitude =
+    pinned.reduce((s, a) => s + (a.longitude as number), 0) / pinned.length;
+  return { latitude, longitude };
+}
+
 /** Haversine distance in miles between two coordinates. */
 export function distanceMiles(
   a: { latitude: number; longitude: number },
