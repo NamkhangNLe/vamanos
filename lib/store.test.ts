@@ -40,8 +40,8 @@ describe('vamanos local store', () => {
       category: 'fitness',
       scheduled_at: new Date(Date.now() + 3600000).toISOString(),
       threshold: 3,
-      latitude: 34.01,
-      longitude: -118.49,
+      latitude: 37.76025,
+      longitude: -122.50826,
     })
     expect(created).not.toBeNull()
     expect(created?.title).toBe('Sunset Run')

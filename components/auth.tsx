@@ -78,7 +78,7 @@ export default function Auth({ onSuccess }: AuthProps) {
       <View style={styles.mapBackground}>
         <HomeMap
           activities={[]}
-          userLocation={{ latitude: 34.020, longitude: -118.495 }}
+          userLocation={{ latitude: 37.788, longitude: -122.4074 }}
           onPinPress={() => { }}
           onMapPress={() => { }}
         />

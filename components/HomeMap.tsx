@@ -21,13 +21,10 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
     const PROVIDER_DEFAULT = RNMaps.PROVIDER_DEFAULT;
 
     // Default center: the user's location when known, else the centroid of
-    // the activities that carry real coordinates, else downtown LA. The old
-    // hardcoded downtown LA default put the map ~25km east of every demo
-    // pin (all in Santa Monica), so the map loaded with zero markers
-    // visible.
+    // the activities that carry real coordinates, else downtown SF.
     const centroid = activityCentroid(activities);
-    const initialLat = userLocation?.latitude ?? centroid?.latitude ?? 34.0522;
-    const initialLng = userLocation?.longitude ?? centroid?.longitude ?? -118.2437;
+    const initialLat = userLocation?.latitude ?? centroid?.latitude ?? 37.7749;
+    const initialLng = userLocation?.longitude ?? centroid?.longitude ?? -122.4194;
 
     return (
         <MapView

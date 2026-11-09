@@ -27,8 +27,8 @@ export default function ActivityMap({ activity, participants, userLocation }: Ac
     const Marker = RNMaps.Marker;
     const PROVIDER_DEFAULT = RNMaps.PROVIDER_DEFAULT;
 
-    const mapLat = activity.latitude || userLocation?.latitude || 34.0522;
-    const mapLng = activity.longitude || userLocation?.longitude || -118.2437;
+    const mapLat = activity.latitude || userLocation?.latitude || 37.7749;
+    const mapLng = activity.longitude || userLocation?.longitude || -122.4194;
 
     return (
         <View style={styles.mapContainer}>

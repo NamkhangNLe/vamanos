@@ -337,10 +337,10 @@ async function supabaseFetchStats(userId: string) {
 // ---------------------------------------------------------------------------
 
 const LOCAL_KEYS = {
-  seeded: 'vamanos_local_seeded_v1',
-  activities: 'vamanos_local_activities_v1',
-  participants: 'vamanos_local_participants_v1',
-  crews: 'vamanos_local_crews_v1',
+  seeded: 'vamanos_local_seeded_v2',
+  activities: 'vamanos_local_activities_v2',
+  participants: 'vamanos_local_participants_v2',
+  crews: 'vamanos_local_crews_v2',
 }
 
 interface LocalActivityRow {
@@ -362,8 +362,8 @@ interface LocalActivityRow {
 
 const SEED_CREWS: Crew[] = [
   {
-    id: 'local-crew-la',
-    name: 'LA Squad',
+    id: 'local-crew-sf',
+    name: 'SF Squad',
     created_at: new Date().toISOString(),
     members: [
       { user_id: 'local-user', username: 'You' },
@@ -401,29 +401,29 @@ function seedActivities(): LocalActivityRow[] {
   return [
     {
       id: 'local-act-vb', title: 'Beach Volleyball', emoji: '🏐', category: 'sports',
-      description: null, location_name: 'Santa Monica Beach',
-      latitude: 34.0091, longitude: -118.4973, scheduled_at: inMin(120),
-      threshold: 6, status: 'pending', crew_id: 'local-crew-la',
+      description: 'Nets are up at Judah. Bring a ball if you have one.', location_name: 'Ocean Beach',
+      latitude: 37.76025, longitude: -122.50826, scheduled_at: inMin(120),
+      threshold: 6, status: 'pending', crew_id: 'local-crew-sf',
       creator_id: 'seed-nam', creator_name: 'Nam',
     },
     {
       id: 'local-act-pizza', title: 'Pizza Run', emoji: '🍕', category: 'food',
-      description: null, location_name: 'Downtown',
-      latitude: 34.0195, longitude: -118.491, scheduled_at: inMin(60),
+      description: 'Clam pie and a margherita, split it.', location_name: 'Pizzeria Delfina, Mission',
+      latitude: 37.76136, longitude: -122.42419, scheduled_at: inMin(60),
       threshold: 4, status: 'pending', crew_id: 'local-crew-foodies',
       creator_id: 'seed-alex', creator_name: 'Alex',
     },
     {
       id: 'local-act-movie', title: 'Late Night Movie', emoji: '🎬', category: 'movies',
-      description: null, location_name: 'AMC Century City',
-      latitude: 34.023, longitude: -118.485, scheduled_at: inMin(240),
-      threshold: 5, status: 'pending', crew_id: 'local-crew-la',
+      description: 'Recliners, food at your seat. Last show.', location_name: 'Alamo Drafthouse, Mission',
+      latitude: 37.75622, longitude: -122.419, scheduled_at: inMin(240),
+      threshold: 5, status: 'pending', crew_id: 'local-crew-sf',
       creator_id: 'seed-jordan', creator_name: 'Jordan',
     },
     {
       id: 'local-act-hoops', title: 'Pickup Basketball', emoji: '🏀', category: 'sports',
-      description: null, location_name: 'Stoner Park',
-      latitude: 34.016, longitude: -118.502, scheduled_at: inMin(30),
+      description: 'Run it back, winners stay on.', location_name: 'Hayes Valley Playground',
+      latitude: 37.77606, longitude: -122.42769, scheduled_at: inMin(30),
       threshold: 10, status: 'pending', crew_id: 'local-crew-ballers',
       creator_id: 'seed-sam', creator_name: 'Sam',
     },

@@ -242,6 +242,16 @@ export default function ActivityDetail() {
                         </View>
                     )}
 
+                    {/* Plan note */}
+                    {activity.description && (
+                        <View style={styles.infoRow}>
+                            <View style={[styles.infoIcon, { backgroundColor: 'rgba(88,86,214,0.1)' }]}>
+                                <Ionicons name="chatbubble-outline" size={18} color="#5856D6" />
+                            </View>
+                            <Text style={styles.infoText}>{activity.description}</Text>
+                        </View>
+                    )}
+
                     {/* RSVP buttons */}
                     <View style={styles.rsvpRow}>
                         <TouchableOpacity

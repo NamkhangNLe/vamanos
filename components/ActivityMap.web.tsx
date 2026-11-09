@@ -117,8 +117,8 @@ const createUserDotIcon = () => {
 export default function ActivityMap({ activity, participants, userLocation }: ActivityMapProps) {
     if (!activity) return null;
 
-    const centerLat = activity.latitude || userLocation?.latitude || 34.0522;
-    const centerLng = activity.longitude || userLocation?.longitude || -118.2437;
+    const centerLat = activity.latitude || userLocation?.latitude || 37.7749;
+    const centerLng = activity.longitude || userLocation?.longitude || -122.4194;
 
     return (
         <View style={StyleSheet.absoluteFill}>
