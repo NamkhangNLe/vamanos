@@ -80,6 +80,7 @@ export interface CreateActivityInput {
   latitude: number | null
   longitude: number | null
   location_name?: string | null
+  description?: string | null
 }
 
 export const CATEGORY_EMOJI: Record<string, string> = {
@@ -266,6 +267,7 @@ async function supabaseCreateActivity(
       latitude: input.latitude,
       longitude: input.longitude,
       location_name: input.location_name ?? null,
+      description: input.description ?? null,
     })
     .select()
     .single()
@@ -337,10 +339,10 @@ async function supabaseFetchStats(userId: string) {
 // ---------------------------------------------------------------------------
 
 const LOCAL_KEYS = {
-  seeded: 'vamanos_local_seeded_v2',
-  activities: 'vamanos_local_activities_v2',
-  participants: 'vamanos_local_participants_v2',
-  crews: 'vamanos_local_crews_v2',
+  seeded: 'vamanos_local_seeded_v3',
+  activities: 'vamanos_local_activities_v3',
+  participants: 'vamanos_local_participants_v3',
+  crews: 'vamanos_local_crews_v3',
 }
 
 interface LocalActivityRow {
@@ -396,34 +398,44 @@ const SEED_CREWS: Crew[] = [
 ]
 
 function seedActivities(): LocalActivityRow[] {
-  const now = Date.now()
-  const inMin = (m: number) => new Date(now + m * 60000).toISOString()
+  // Demo plans are dated TOMORROW at fixed local times, not "in 30–240
+  // minutes". Seeds dated relative to now expire within hours and the home
+  // screen reads "Now!" forever by evening; tomorrow-dated plans stay
+  // alive and countable all day, every day. (Keys are v3 so devices that
+  // seeded the old same-day plans re-seed once.)
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const at = (hour: number, minute: number) => {
+    const d = new Date(tomorrow)
+    d.setHours(hour, minute, 0, 0)
+    return d.toISOString()
+  }
   return [
     {
       id: 'local-act-vb', title: 'Beach Volleyball', emoji: '🏐', category: 'sports',
       description: 'Nets are up at Judah. Bring a ball if you have one.', location_name: 'Ocean Beach',
-      latitude: 37.76025, longitude: -122.50826, scheduled_at: inMin(120),
+      latitude: 37.76025, longitude: -122.50826, scheduled_at: at(11, 0),
       threshold: 6, status: 'pending', crew_id: 'local-crew-sf',
       creator_id: 'seed-nam', creator_name: 'Nam',
     },
     {
       id: 'local-act-pizza', title: 'Pizza Run', emoji: '🍕', category: 'food',
       description: 'Clam pie and a margherita, split it.', location_name: 'Pizzeria Delfina, Mission',
-      latitude: 37.76136, longitude: -122.42419, scheduled_at: inMin(60),
+      latitude: 37.76136, longitude: -122.42419, scheduled_at: at(13, 0),
       threshold: 4, status: 'pending', crew_id: 'local-crew-foodies',
       creator_id: 'seed-alex', creator_name: 'Alex',
     },
     {
       id: 'local-act-movie', title: 'Late Night Movie', emoji: '🎬', category: 'movies',
       description: 'Recliners, food at your seat. Last show.', location_name: 'Alamo Drafthouse, Mission',
-      latitude: 37.75622, longitude: -122.419, scheduled_at: inMin(240),
+      latitude: 37.75622, longitude: -122.419, scheduled_at: at(19, 30),
       threshold: 5, status: 'pending', crew_id: 'local-crew-sf',
       creator_id: 'seed-jordan', creator_name: 'Jordan',
     },
     {
       id: 'local-act-hoops', title: 'Pickup Basketball', emoji: '🏀', category: 'sports',
       description: 'Run it back, winners stay on.', location_name: 'Hayes Valley Playground',
-      latitude: 37.77606, longitude: -122.42769, scheduled_at: inMin(30),
+      latitude: 37.77606, longitude: -122.42769, scheduled_at: at(18, 0),
       threshold: 10, status: 'pending', crew_id: 'local-crew-ballers',
       creator_id: 'seed-sam', creator_name: 'Sam',
     },
@@ -536,7 +548,7 @@ async function localCreateActivity(input: CreateActivityInput, user: CurrentUser
     title: input.title,
     emoji: emojiForCategory(input.category),
     category: input.category,
-    description: null,
+    description: input.description ?? null,
     location_name: input.location_name ?? null,
     latitude: input.latitude,
     longitude: input.longitude,
@@ -562,6 +574,46 @@ async function localCreateCrew(name: string, user: CurrentUser): Promise<Crew> {
   const crew: Crew = {
     id: `local-crew-${Date.now()}`,
     name,
+    created_at: new Date().toISOString(),
+    members: [{ user_id: user.id, username: user.username }],
+  }
+  crews.unshift(crew)
+  await AsyncStorage.setItem(LOCAL_KEYS.crews, JSON.stringify(crews))
+  return crew
+}
+
+/** Add a named amigo to a crew (local mode). Idempotent on username. */
+async function localAddCrewMember(crewId: string, username: string): Promise<Crew | null> {
+  const name = username.trim()
+  if (!name) return null
+  const crews = await localRead<Crew[]>(LOCAL_KEYS.crews, [])
+  const crew = crews.find((c) => c.id === crewId)
+  if (!crew) return null
+  if (!crew.members.some((m) => (m.username ?? '').toLowerCase() === name.toLowerCase())) {
+    crew.members.push({ user_id: `invite-${Date.now()}`, username: name })
+    await AsyncStorage.setItem(LOCAL_KEYS.crews, JSON.stringify(crews))
+  }
+  return crew
+}
+
+/**
+ * Join a crew from a shared invite link (local mode). On a fresh device
+ * the crew does not exist yet, so it is created from the invite's crew
+ * name with the current user as its first member.
+ */
+async function localJoinCrewByInvite(crewId: string, crewName: string, user: CurrentUser): Promise<Crew> {
+  const crews = await localRead<Crew[]>(LOCAL_KEYS.crews, [])
+  const existing = crews.find((c) => c.id === crewId)
+  if (existing) {
+    if (!existing.members.some((m) => m.user_id === user.id)) {
+      existing.members.push({ user_id: user.id, username: user.username })
+      await AsyncStorage.setItem(LOCAL_KEYS.crews, JSON.stringify(crews))
+    }
+    return existing
+  }
+  const crew: Crew = {
+    id: crewId,
+    name: crewName || 'A crew',
     created_at: new Date().toISOString(),
     members: [{ user_id: user.id, username: user.username }],
   }
@@ -631,6 +683,25 @@ export async function createCrew(name: string): Promise<Crew | null> {
   if (!user) throw new Error('Could not determine who you are')
   if (isSupabaseConfigured) return supabaseCreateCrew(name, user)
   return localCreateCrew(name, user)
+}
+
+/**
+ * Add a named amigo to a crew. Works in local mode; in Supabase mode
+ * invites need the friend's real account (crew_members.user_id is a
+ * profiles FK), so this returns null and the UI explains that instead
+ * of fabricating a member row that could never sync.
+ */
+export async function addCrewMember(crewId: string, username: string): Promise<Crew | null> {
+  if (isSupabaseConfigured) return null
+  return localAddCrewMember(crewId, username)
+}
+
+/** Join a crew via a shared invite link. Local mode only (see addCrewMember). */
+export async function joinCrewByInvite(crewId: string, crewName: string): Promise<Crew | null> {
+  const user = await getCurrentUser()
+  if (!user) return null
+  if (isSupabaseConfigured) return null
+  return localJoinCrewByInvite(crewId, crewName, user)
 }
 
 export async function fetchStats(): Promise<{ activities: number; joined: number; crews: number; amigos: number }> {

@@ -5,6 +5,7 @@ import {
   Alert,
   FlatList,
   Platform,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -13,9 +14,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
-import { createCrew, fetchCrews, type Crew } from '../../lib/store';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { addCrewMember, createCrew, fetchCrews, joinCrewByInvite, type Crew } from '../../lib/store';
 
-const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
+const AVATAR_COLORS = ['#0D7A5F', '#6C2BD9', '#B7791F', '#2FA37F', '#D92D20', '#075C46'];
 
 function getColor(name: string) {
   let hash = 0;
@@ -29,10 +31,77 @@ export default function AmigosScreen() {
   const [loading, setLoading] = useState(true);
   const [newCrewName, setNewCrewName] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addName, setAddName] = useState('');
+  const [copiedCrewId, setCopiedCrewId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCrews();
+    handleInviteLink();
   }, []);
+
+  /** Opening a shared invite link joins that crew (local mode). */
+  async function handleInviteLink() {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const inviteId = params.get('invite');
+    if (!inviteId) return;
+    const crewName = params.get('crew') ?? 'A crew';
+    try {
+      const crew = await joinCrewByInvite(inviteId, crewName);
+      if (crew) {
+        await loadCrews();
+        setExpandedId(crew.id);
+        Alert.alert('Welcome to the crew!', `You joined ${crew.name}.`);
+      } else if (isSupabaseConfigured) {
+        Alert.alert('Invite needs an account', 'Crew invites work in local demo mode. In live mode your friend needs a Supabase account first — invite links for accounts are still to be built.');
+      }
+    } catch (_) {
+      // A bad link is not a crash; the crews list is still there.
+    }
+  }
+
+  function inviteLinkFor(crew: Crew): string {
+    const base =
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? `${window.location.origin}${window.location.pathname.split('?')[0]}`
+        : 'https://namkhangnle.github.io/vamanos/amigos';
+    return `${base}?invite=${encodeURIComponent(crew.id)}&crew=${encodeURIComponent(crew.name)}`;
+  }
+
+  async function handleCopyInvite(crew: Crew) {
+    const link = inviteLinkFor(crew);
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(link);
+        setCopiedCrewId(crew.id);
+      } else {
+        await Share.share({ message: `Join my ${crew.name} crew on Vámonos: ${link}` });
+      }
+    } catch (_) {
+      Alert.alert('Invite link', link);
+    }
+  }
+
+  async function handleAddMember(crew: Crew) {
+    if (!addName.trim()) return;
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      const updated = await addCrewMember(crew.id, addName.trim());
+      if (!updated) {
+        Alert.alert(
+          'Could not add them yet',
+          isSupabaseConfigured
+            ? 'Adding a friend by name works in local demo mode. In live mode they need a Supabase account first — invite links for accounts are still to be built.'
+            : 'That crew could not be found. Try again.',
+        );
+        return;
+      }
+      setAddName('');
+      await loadCrews();
+    } catch (error: any) {
+      Alert.alert('Error', error?.message ?? 'Failed to add member');
+    }
+  }
 
   async function loadCrews() {
     try {
@@ -126,6 +195,35 @@ export default function AmigosScreen() {
                 <Text style={styles.memberName}>{m.username || 'Someone'}</Text>
               </View>
             ))}
+
+            {/* Add an amigo by name — they actually join the crew */}
+            <View style={styles.addRow}>
+              <TextInput
+                style={styles.addInput}
+                placeholder="Add an amigo by name..."
+                placeholderTextColor={Colors.textSecondary}
+                value={addName}
+                onChangeText={setAddName}
+                returnKeyType="done"
+                onSubmitEditing={() => handleAddMember(item)}
+              />
+              <TouchableOpacity
+                style={[styles.addBtn, !addName.trim() && styles.addBtnDisabled]}
+                onPress={() => handleAddMember(item)}
+                disabled={!addName.trim()}
+              >
+                <Ionicons name="add" size={20} color={Colors.white} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Shareable invite link — opening it joins the crew */}
+            <TouchableOpacity style={styles.inviteBtn} onPress={() => handleCopyInvite(item)} activeOpacity={0.8}>
+              <Ionicons name="link-outline" size={18} color={Colors.primary} />
+              <Text style={styles.inviteBtnText}>
+                {copiedCrewId === item.id ? 'Invite link copied!' : 'Copy invite link'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.inviteHint}>Anyone who opens the link joins this crew.</Text>
           </View>
         )}
       </View>
@@ -137,7 +235,7 @@ export default function AmigosScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Amigos</Text>
-        <Text style={styles.headerSub}>Your crews — tap one to see who's in it</Text>
+        <Text style={styles.headerSub}>Your crews — tap one to see who's in it, add amigos, or share an invite link</Text>
       </View>
 
       <FlatList
@@ -231,7 +329,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: Radius.md,
-    backgroundColor: 'rgba(0,122,255,0.08)',
+    backgroundColor: 'rgba(13, 122, 95, 0.10)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -310,6 +408,54 @@ const styles = StyleSheet.create({
     ...Typography.callout,
     color: Colors.text,
     fontWeight: '500',
+  },
+
+  // Add-member + invite
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  addInput: {
+    flex: 1,
+    height: 44,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.lg,
+    ...Typography.callout,
+    color: Colors.text,
+  },
+  addBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addBtnDisabled: {
+    backgroundColor: Colors.backgroundTertiary,
+  },
+  inviteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.pill,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  inviteBtnText: {
+    ...Typography.footnote,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  inviteHint: {
+    ...Typography.caption1,
+    color: Colors.textSecondary,
+    textAlign: 'center',
   },
 
   // Empty state

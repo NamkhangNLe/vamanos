@@ -1,9 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     Alert,
+    Linking,
     Platform,
     ScrollView,
     StyleSheet,
@@ -21,15 +23,23 @@ export default function ProfileScreen() {
     const router = useRouter();
     const [user, setUser] = useState<CurrentUser | null>(null);
     const [stats, setStats] = useState({ activities: 0, joined: 0, crews: 0, amigos: 0 });
+    const [locationSharing, setLocationSharing] = useState(false);
 
     useEffect(() => {
         load();
+        AsyncStorage.getItem('vamanos_location_sharing').then((v) => setLocationSharing(v === 'on'));
     }, []);
 
     async function load() {
         const u = await getCurrentUser();
         setUser(u);
         setStats(await fetchStats());
+    }
+
+    async function toggleLocationSharing() {
+        const next = !locationSharing;
+        setLocationSharing(next);
+        await AsyncStorage.setItem('vamanos_location_sharing', next ? 'on' : 'off');
     }
 
     async function handleSignOut() {
@@ -50,11 +60,42 @@ export default function ProfileScreen() {
     const displayName = user?.username || 'You';
     const initial = displayName[0]?.toUpperCase() || '?';
 
+    // Every row does something real now — no dead onPress: () => {} rows.
+    // Notifications: there is no push infra, so the row says so honestly
+    // instead of pretending to open a settings screen that doesn't exist.
     const settingsItems = [
-        { icon: 'notifications-outline' as const, label: 'Notifications', onPress: () => { } },
-        { icon: 'location-outline' as const, label: 'Location Sharing', onPress: () => { } },
-        { icon: 'shield-checkmark-outline' as const, label: 'Privacy', onPress: () => { } },
-        { icon: 'help-circle-outline' as const, label: 'Help & Feedback', onPress: () => { } },
+        {
+            icon: 'notifications-outline' as const,
+            label: 'Notifications',
+            value: 'Not yet',
+            onPress: () => Alert.alert(
+                'Notifications',
+                'Push notifications are not wired up yet, so there is nothing to turn on. When Supabase is connected and push is built, this is where your crew alerts will live.',
+            ),
+        },
+        {
+            icon: 'location-outline' as const,
+            label: 'Location Sharing',
+            value: locationSharing ? 'On' : 'Off',
+            onPress: toggleLocationSharing,
+        },
+        {
+            icon: 'shield-checkmark-outline' as const,
+            label: 'Privacy',
+            value: undefined as string | undefined,
+            onPress: () => Alert.alert(
+                'Privacy',
+                isSupabaseConfigured
+                    ? 'Signed in with Supabase: your plans, crews and RSVPs live in your Supabase project, visible to your crews. Nothing is sold or shared beyond that.'
+                    : 'Local demo mode: everything lives on this device only. Nothing leaves the phone until you connect Supabase.',
+            ),
+        },
+        {
+            icon: 'help-circle-outline' as const,
+            label: 'Help & Feedback',
+            value: undefined as string | undefined,
+            onPress: () => Linking.openURL('https://github.com/NamkhangNLe/vamanos/issues/new'),
+        },
     ];
 
     return (
@@ -63,7 +104,15 @@ export default function ProfileScreen() {
             {/* Header */}
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Profile</Text>
-                <TouchableOpacity style={styles.settingsBtn}>
+                <TouchableOpacity
+                    style={styles.settingsBtn}
+                    onPress={() => Alert.alert(
+                        'Vámonos v1.0',
+                        isSupabaseConfigured
+                            ? 'Live mode — signed in with Supabase, plans sync with your squad.'
+                            : 'Local demo mode — plans live on this device. Connect Supabase in the card below to go live.',
+                    )}
+                >
                     <Ionicons name="settings-outline" size={22} color={Colors.text} />
                 </TouchableOpacity>
             </View>
@@ -142,6 +191,7 @@ export default function ProfileScreen() {
                                     <Ionicons name={item.icon} size={18} color={Colors.textSecondary} />
                                 </View>
                                 <Text style={styles.settingsLabel}>{item.label}</Text>
+                                {item.value && <Text style={styles.settingsValue}>{item.value}</Text>}
                                 <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
                             </TouchableOpacity>
                         ))}
@@ -355,6 +405,11 @@ const styles = StyleSheet.create({
         ...Typography.callout,
         color: Colors.text,
         fontWeight: '500',
+    },
+    settingsValue: {
+        ...Typography.footnote,
+        color: Colors.textSecondary,
+        fontWeight: '600',
     },
 
     // Sign out

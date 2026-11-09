@@ -24,7 +24,8 @@ import { fetchActivities, subscribeToActivityChanges, type Activity } from '../.
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Bottom sheet snap points
+// Bottom sheet snap points. Default is COLLAPSED: the map is the hero on
+// load and the sheet is a peek, not a 45% curtain over the pins.
 const SNAP_FULL = 0.12;      // full open (12% from top)
 const SNAP_HALF = 0.55;      // half open (55% from top)
 const SNAP_COLLAPSED = 0.80; // peek (80% from top)
@@ -45,12 +46,13 @@ export default function Index() {
   const [query, setQuery] = useState('');
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [sheetSnap, setSheetSnap] = useState(SNAP_COLLAPSED);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // Bottom sheet animation
-  const sheetY = useRef(new Animated.Value(SCREEN_HEIGHT * SNAP_HALF)).current;
-  const currentSnap = useRef(SNAP_HALF);
+  // Bottom sheet animation — starts collapsed so the map reads first.
+  const sheetY = useRef(new Animated.Value(SCREEN_HEIGHT * SNAP_COLLAPSED)).current;
+  const currentSnap = useRef(SNAP_COLLAPSED);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -89,6 +91,7 @@ export default function Index() {
 
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         currentSnap.current = snapConst;
+        setSheetSnap(snapConst);
         Animated.spring(sheetY, {
           toValue: target,
           useNativeDriver: false,
@@ -101,6 +104,7 @@ export default function Index() {
 
   function snapSheet(snap: number) {
     currentSnap.current = snap;
+    setSheetSnap(snap);
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Animated.spring(sheetY, {
       toValue: SCREEN_HEIGHT * snap,
@@ -231,6 +235,7 @@ export default function Index() {
         userLocation={userLocation}
         onPinPress={(id) => router.push(`/activity/${id}`)}
         onMapPress={() => snapSheet(SNAP_COLLAPSED)}
+        sheetTopFraction={sheetSnap}
       />
 
       {/* ── FLOATING HEADER ── */}
@@ -334,16 +339,19 @@ export default function Index() {
         />
       </Animated.View>
 
-      {/* Current location button */}
-      <TouchableOpacity
-        style={[styles.locationButton, { bottom: insets.bottom + 100 }]}
-        onPress={() => {
-          if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          getUserLocation();
-        }}
-      >
-        <Ionicons name="locate" size={20} color={Colors.primary} />
-      </TouchableOpacity>
+      {/* Current location button — only when the sheet is collapsed, so it
+          never floats over the list. Sits just above the sheet's top edge. */}
+      {sheetSnap === SNAP_COLLAPSED && (
+        <TouchableOpacity
+          style={[styles.locationButton, { bottom: SCREEN_HEIGHT * (1 - SNAP_COLLAPSED) + 16 }]}
+          onPress={() => {
+            if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            getUserLocation();
+          }}
+        >
+          <Ionicons name="locate" size={20} color={Colors.primary} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -351,7 +359,7 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E8E8ED',
+    backgroundColor: '#DDEBE2',
   },
 
   // Floating header
@@ -549,7 +557,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardEmojiHype: {
-    backgroundColor: 'rgba(255,107,44,0.12)',
+    backgroundColor: 'rgba(108, 43, 217, 0.12)',
   },
   cardEmojiText: {
     fontSize: 22,
@@ -569,7 +577,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   hypeTag: {
-    backgroundColor: 'rgba(255,107,44,0.12)',
+    backgroundColor: 'rgba(108, 43, 217, 0.12)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: Radius.pill,

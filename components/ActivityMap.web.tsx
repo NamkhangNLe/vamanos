@@ -32,7 +32,7 @@ function MapResizer() {
     return null;
 }
 
-const FRIEND_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
+const FRIEND_COLORS = ['#0D7A5F', '#6C2BD9', '#B7791F', '#2FA37F', '#D92D20', '#075C46'];
 function getFriendColor(name: string) {
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -98,10 +98,10 @@ const createUserDotIcon = () => {
         className: 'custom-leaflet-icon user-dot-icon',
         html: `
       <div style="
-        background: #007AFF;
+        background: #0D7A5F;
         border-radius: 12px;
         border: 3px solid white;
-        box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.3);
+        box-shadow: 0 0 0 2px rgba(13, 122, 95, 0.3);
         width: 18px;
         height: 18px;
         margin-left: -9px;

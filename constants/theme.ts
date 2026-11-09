@@ -1,47 +1,50 @@
 /**
  * Vámonos Design System
- * Apple HIG-inspired tokens for a premium, cohesive UI
+ *
+ * Map-first, street-bold identity — deliberately NOT Apple HIG grey/blue
+ * and NOT Jobless's coral. Deep pine green + electric violet on pale mint:
+ * the map is the hero, the UI is the trail signage.
  */
 
 export const Colors = {
-  // Primary
-  primary: '#007AFF',
-  primaryLight: '#47A0FF',
-  primaryDark: '#0056CC',
+  // Primary — deep pine green
+  primary: '#0D7A5F',
+  primaryLight: '#2FA37F',
+  primaryDark: '#075C46',
 
-  // Neutrals (Apple System)
-  black: '#000000',
+  // Neutrals — green-tinted ink, not Apple grey
+  black: '#0C1B16',
   white: '#FFFFFF',
-  text: '#1C1C1E',
-  textSecondary: '#8E8E93',
-  textTertiary: '#AEAEB2',
+  text: '#122019',
+  textSecondary: '#5C6E66',
+  textTertiary: '#93A69D',
 
-  // Backgrounds
-  background: '#F2F2F7',
+  // Backgrounds — pale mint, not #F2F2F7
+  background: '#E9F2EC',
   backgroundElevated: '#FFFFFF',
-  backgroundTertiary: '#E5E5EA',
+  backgroundTertiary: '#D3E2D8',
 
   // Semantic
-  success: '#34C759',
-  warning: '#FF9500',
-  danger: '#FF3B30',
-  info: '#5AC8FA',
+  success: '#0D7A5F',
+  warning: '#B7791F',
+  danger: '#D92D20',
+  info: '#6C2BD9',
 
-  // Accent (for highlights, badges, CTAs)
-  accent: '#FF6B2C',
-  accentSoft: 'rgba(255, 107, 44, 0.12)',
+  // Accent — electric violet, for highlights, badges, CTAs
+  accent: '#6C2BD9',
+  accentSoft: 'rgba(108, 43, 217, 0.12)',
 
   // Separators
-  separator: '#C6C6C8',
-  separatorLight: 'rgba(60, 60, 67, 0.06)',
+  separator: '#B9CFC2',
+  separatorLight: 'rgba(18, 32, 25, 0.08)',
 
   // Overlays
-  overlay: 'rgba(0, 0, 0, 0.4)',
+  overlay: 'rgba(12, 27, 22, 0.45)',
   sheetBackground: 'rgba(255, 255, 255, 0.97)',
 
   // Tab bar
-  tabActive: '#007AFF',
-  tabInactive: '#8E8E93',
+  tabActive: '#0D7A5F',
+  tabInactive: '#93A69D',
 } as const;
 
 export const Typography = {

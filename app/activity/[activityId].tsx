@@ -29,7 +29,7 @@ import {
     type RSVPStatus,
 } from '../../lib/store';
 
-const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
+const AVATAR_COLORS = ['#0D7A5F', '#6C2BD9', '#B7791F', '#2FA37F', '#D92D20', '#075C46'];
 function getColor(name: string) {
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -107,7 +107,10 @@ export default function ActivityDetail() {
             await setRSVP(activity.id, status);
             await load();
             if (status === 'committed') {
-                Alert.alert("🔥 You're in!", '');
+                Alert.alert(
+                    "🔥 You're in!",
+                    `${activity.title} — ${formatTime(activity.scheduled_at)}. You're committed and counted toward the ${threshold} needed to lock it in. See you there!`,
+                );
             }
         } catch (_) {
             Alert.alert('Error', 'Failed to update RSVP');
@@ -232,7 +235,7 @@ export default function ActivityDetail() {
                     {/* Location info */}
                     {(activity.location_name || distance) && (
                         <View style={styles.infoRow}>
-                            <View style={[styles.infoIcon, { backgroundColor: 'rgba(255,107,44,0.1)' }]}>
+                            <View style={[styles.infoIcon, { backgroundColor: 'rgba(108, 43, 217, 0.10)' }]}>
                                 <Ionicons name="location-outline" size={18} color={Colors.accent} />
                             </View>
                             <Text style={styles.infoText}>
@@ -245,8 +248,8 @@ export default function ActivityDetail() {
                     {/* Plan note */}
                     {activity.description && (
                         <View style={styles.infoRow}>
-                            <View style={[styles.infoIcon, { backgroundColor: 'rgba(88,86,214,0.1)' }]}>
-                                <Ionicons name="chatbubble-outline" size={18} color="#5856D6" />
+                            <View style={[styles.infoIcon, { backgroundColor: 'rgba(108, 43, 217, 0.10)' }]}>
+                                <Ionicons name="chatbubble-outline" size={18} color="#6C2BD9" />
                             </View>
                             <Text style={styles.infoText}>{activity.description}</Text>
                         </View>
@@ -483,7 +486,7 @@ const styles = StyleSheet.create({
         width: 34,
         height: 34,
         borderRadius: Radius.sm,
-        backgroundColor: 'rgba(0,122,255,0.08)',
+        backgroundColor: 'rgba(13, 122, 95, 0.10)',
         justifyContent: 'center',
         alignItems: 'center',
     },

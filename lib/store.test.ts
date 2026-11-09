@@ -92,6 +92,51 @@ describe('vamanos local store', () => {
     expect(stats.joined).toBe(0)
   })
 
+  it('seeds demo activities for tomorrow, not hours from now', async () => {
+    const activities = await store.fetchActivities()
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    for (const a of activities) {
+      const d = new Date(a.scheduled_at)
+      expect(d.getFullYear()).toBe(tomorrow.getFullYear())
+      expect(d.getMonth()).toBe(tomorrow.getMonth())
+      expect(d.getDate()).toBe(tomorrow.getDate())
+      expect(d.getTime()).toBeGreaterThan(Date.now())
+    }
+  })
+
+  it('creates an activity with a description that survives a refetch', async () => {
+    const created = await store.createActivity({
+      title: 'Sunset Run',
+      category: 'fitness',
+      description: 'Meet at the Judah gate, bring water.',
+      scheduled_at: new Date(Date.now() + 3600000).toISOString(),
+      threshold: 3,
+      latitude: 37.76025,
+      longitude: -122.50826,
+    })
+    expect(created?.description).toBe('Meet at the Judah gate, bring water.')
+    const refetched = await store.fetchActivity(created!.id)
+    expect(refetched?.description).toBe('Meet at the Judah gate, bring water.')
+  })
+
+  it('adds an amigo to a crew and an invite join creates the crew', async () => {
+    const crews = await store.fetchCrews()
+    const crew = crews[0]!
+    const before = crew.members.length
+    const updated = await store.addCrewMember(crew.id, 'Priya')
+    expect(updated?.members.length).toBe(before + 1)
+    expect(updated?.members.some((m) => m.username === 'Priya')).toBe(true)
+    // Adding the same name twice does not duplicate them.
+    const again = await store.addCrewMember(crew.id, 'priya')
+    expect(again?.members.length).toBe(before + 1)
+
+    const joined = await store.joinCrewByInvite('local-crew-invite-test', 'Invite Crew')
+    expect(joined?.name).toBe('Invite Crew')
+    expect(joined?.members.some((m) => m.username === 'You')).toBe(true)
+    expect((await store.fetchCrews()).some((c) => c.id === 'local-crew-invite-test')).toBe(true)
+  })
+
   it('live subscription is a safe no-op in local mode', () => {
     const unsubscribe = store.subscribeToActivityChanges(() => {})
     expect(typeof unsubscribe).toBe('function')

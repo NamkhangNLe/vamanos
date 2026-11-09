@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActivityCategories, Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
 import { createActivity, emojiForCategory } from '../../lib/store';
+import LocationPicker, { type PickedLocation } from '../../components/LocationPicker';
 
 const TIME_PRESETS = [
     { label: 'Now!', offset: 0 },
@@ -25,13 +26,37 @@ const TIME_PRESETS = [
     { label: 'Tonight', offset: 480 },
 ];
 
+function tomorrowDateStr(): string {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** Parse YYYY-MM-DD + HH:MM (24h) into an ISO string, or null when invalid. */
+function parseDateTime(dateStr: string, timeStr: string): string | null {
+    const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+    const tm = /^(\d{1,2}):(\d{2})$/.exec(timeStr.trim());
+    if (!dm || !tm) return null;
+    const d = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2]), 0, 0);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+}
+
 export default function CreateScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
     const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [selectedTime, setSelectedTime] = useState(0);
+    const [timeMode, setTimeMode] = useState<'preset' | 'custom'>('preset');
+    const [customDate, setCustomDate] = useState(tomorrowDateStr());
+    const [customTime, setCustomTime] = useState('18:00');
+    const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
     const [threshold, setThreshold] = useState(4);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | null>(null);
@@ -61,17 +86,38 @@ export default function CreateScreen() {
         if (!title.trim() || isSubmitting) return;
         if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+        // The pin has to be where the plan is: tap-to-place on the map, or
+        // your current location. No more deterministic ±500 m hash offset.
+        const loc = pickedLocation ?? userLocation;
+        if (!loc) {
+            Alert.alert('Where is it?', 'Tap the map below to drop the pin where the plan actually is, or allow location access.');
+            return;
+        }
+
+        let scheduledAt: string;
+        if (timeMode === 'custom') {
+            const parsed = parseDateTime(customDate, customTime);
+            if (!parsed) {
+                Alert.alert('When is it?', 'Use a real date (YYYY-MM-DD) and time (HH:MM, 24-hour).');
+                return;
+            }
+            scheduledAt = parsed;
+        } else {
+            scheduledAt = new Date(Date.now() + selectedTime * 60000).toISOString();
+        }
+
         try {
             setIsSubmitting(true);
-            const scheduledAt = new Date(Date.now() + selectedTime * 60000).toISOString();
 
             const activity = await createActivity({
                 title: title.trim(),
+                description: description.trim() || null,
                 category: selectedCategory,
                 scheduled_at: scheduledAt,
                 threshold,
-                latitude: userLocation?.latitude ?? null,
-                longitude: userLocation?.longitude ?? null,
+                latitude: loc.latitude,
+                longitude: loc.longitude,
+                location_name: pickedLocation ? 'Pinned on map' : null,
             });
 
             if (!activity) throw new Error('Activity was not created');
@@ -118,6 +164,19 @@ export default function CreateScreen() {
                     />
                 </View>
 
+                {/* Description */}
+                <Text style={styles.label}>What&apos;s the plan?</Text>
+                <TextInput
+                    style={styles.descInput}
+                    placeholder="Details your crew needs — what to bring, where to meet, the vibe..."
+                    placeholderTextColor={Colors.textTertiary}
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline
+                    numberOfLines={3}
+                    maxLength={280}
+                />
+
                 {/* Category */}
                 <Text style={styles.label}>Category</Text>
                 <View style={styles.categoryGrid}>
@@ -144,13 +203,14 @@ export default function CreateScreen() {
                 <Text style={styles.label}>When?</Text>
                 <View style={styles.timeRow}>
                     {TIME_PRESETS.map((t) => {
-                        const active = selectedTime === t.offset;
+                        const active = timeMode === 'preset' && selectedTime === t.offset;
                         return (
                             <TouchableOpacity
                                 key={t.offset}
                                 style={[styles.timeChip, active && styles.timeChipActive]}
                                 onPress={() => {
                                     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setTimeMode('preset');
                                     setSelectedTime(t.offset);
                                 }}
                             >
@@ -159,6 +219,31 @@ export default function CreateScreen() {
                         );
                     })}
                 </View>
+
+                {/* Pick a date & time — presets only cover today */}
+                <Text style={styles.subLabel}>Or pick a date &amp; time</Text>
+                <View style={styles.dateTimeRow}>
+                    <TextInput
+                        style={[styles.dateTimeInput, timeMode === 'custom' && styles.dateTimeInputActive]}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={Colors.textTertiary}
+                        value={customDate}
+                        onChangeText={(v) => { setCustomDate(v); setTimeMode('custom'); }}
+                        maxLength={10}
+                    />
+                    <TextInput
+                        style={[styles.dateTimeInput, timeMode === 'custom' && styles.dateTimeInputActive]}
+                        placeholder="HH:MM"
+                        placeholderTextColor={Colors.textTertiary}
+                        value={customTime}
+                        onChangeText={(v) => { setCustomTime(v); setTimeMode('custom'); }}
+                        maxLength={5}
+                    />
+                </View>
+
+                {/* Where? Tap the map to place the pin. */}
+                <Text style={styles.label}>Where?</Text>
+                <LocationPicker initial={userLocation} value={pickedLocation} onPick={setPickedLocation} />
 
                 {/* Threshold */}
                 <Text style={styles.label}>Minimum squad size</Text>
@@ -200,7 +285,7 @@ export default function CreateScreen() {
                 </TouchableOpacity>
 
                 <Text style={styles.footerNote}>
-                    Your crew gets notified and confirms before it's locked in.
+                    Plans save on this device in demo mode. Share the plan from its page once it&apos;s created.
                 </Text>
 
             </ScrollView>
@@ -262,6 +347,46 @@ const styles = StyleSheet.create({
         flex: 1,
         ...Typography.headline,
         color: Colors.text,
+    },
+
+    // Description input
+    descInput: {
+        backgroundColor: Colors.background,
+        borderRadius: Radius.xl,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        ...Typography.callout,
+        color: Colors.text,
+        minHeight: 84,
+        textAlignVertical: 'top',
+    },
+
+    // Date/time picker
+    subLabel: {
+        ...Typography.caption1,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+        marginTop: Spacing.md,
+        marginBottom: 6,
+    },
+    dateTimeRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    dateTimeInput: {
+        flex: 1,
+        backgroundColor: Colors.background,
+        borderRadius: Radius.md,
+        paddingHorizontal: Spacing.lg,
+        height: 48,
+        ...Typography.callout,
+        color: Colors.text,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    dateTimeInputActive: {
+        borderColor: Colors.primary,
+        backgroundColor: Colors.backgroundElevated,
     },
 
     // Category grid

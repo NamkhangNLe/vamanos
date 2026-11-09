@@ -9,7 +9,7 @@ export interface ActivityMapProps {
     userLocation?: { latitude: number, longitude: number } | null;
 }
 
-const FRIEND_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
+const FRIEND_COLORS = ['#0D7A5F', '#6C2BD9', '#B7791F', '#2FA37F', '#D92D20', '#075C46'];
 function getFriendColor(name: string) {
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);

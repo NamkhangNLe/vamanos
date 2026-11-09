@@ -66,3 +66,64 @@ export function formatDistance(
   if (miles < 10) return `${miles.toFixed(1)} mi away`
   return `${Math.round(miles)} mi away`
 }
+
+/** Meters per pixel at a Leaflet/Google-maps zoom level and latitude. */
+export function metersPerPixel(zoom: number, latitude: number): number {
+  return (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / Math.pow(2, zoom)
+}
+
+/**
+ * Spread marker positions apart so no two markers sit on top of each other.
+ *
+ * Two venues can be a few hundred metres apart (Pizzeria Delfina and Alamo
+ * Drafthouse are ~0.35 mi apart in the Mission). At the zoom the map fits
+ * to, that is ~24 screen pixels — less than the 38px marker — so one pin
+ * hides completely behind the other. This pushes close pairs apart (in
+ * metres, around their midpoint, so the shift is symmetric and small)
+ * until every pair is at least `minDistanceMeters` apart.
+ *
+ * Pure and deterministic: same input, same output. Positions that are
+ * already far enough apart are returned untouched, so this is a no-op for
+ * well-separated pins. Display positions only — the activities keep their
+ * true coordinates; only the rendered pins move, by ~0.1-0.2 mi at most.
+ */
+export function spreadPositions(
+  positions: [number, number][],
+  minDistanceMeters: number,
+): [number, number][] {
+  if (positions.length < 2 || minDistanceMeters <= 0) return positions
+  const lat0 = positions.reduce((s, p) => s + p[0], 0) / positions.length
+  const cosLat = Math.cos((lat0 * Math.PI) / 180)
+  const toXY = (p: [number, number]): [number, number] => [
+    p[1] * 111320 * cosLat,
+    p[0] * 111320,
+  ]
+  const fromXY = (x: number, y: number): [number, number] => [
+    y / 111320,
+    x / (111320 * cosLat),
+  ]
+  const pts = positions.map(toXY)
+  // A few passes settle chains (A pushes B into C, then B-C separate).
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[j][0] - pts[i][0]
+        const dy = pts[j][1] - pts[i][1]
+        const dist = Math.hypot(dx, dy)
+        if (dist >= minDistanceMeters) continue
+        // Identical points have no direction; split them east-west.
+        const ux = dist === 0 ? 1 : dx / dist
+        const uy = dist === 0 ? 0 : dy / dist
+        const push = (minDistanceMeters - dist) / 2
+        pts[i][0] -= ux * push
+        pts[i][1] -= uy * push
+        pts[j][0] += ux * push
+        pts[j][1] += uy * push
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+  return pts.map(([x, y]) => fromXY(x, y))
+}

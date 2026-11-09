@@ -1,13 +1,19 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import { Colors, Shadows } from '../constants/theme';
-import { activityCentroid, offsetFor } from '../lib/geo';
+import { activityCentroid, offsetFor, spreadPositions } from '../lib/geo';
+
+// Region the map opens on. Kept in sync with the spread below.
+const LATITUDE_DELTA = 0.05;
+const LONGITUDE_DELTA = 0.05;
 
 interface HomeMapProps {
     activities: any[];
     userLocation?: { latitude: number, longitude: number } | null;
     onPinPress: (activityId: string) => void;
     onMapPress: () => void;
+    /** Web-only: top edge of the bottom sheet; ignored on native. */
+    sheetTopFraction?: number;
 }
 
 // Native iOS/Android version — react-native-maps is lazy-required so Metro
@@ -26,6 +32,27 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
     const initialLat = userLocation?.latitude ?? centroid?.latitude ?? 37.7749;
     const initialLng = userLocation?.longitude ?? centroid?.longitude ?? -122.4194;
 
+    // Marker positions (explicit coords when present, else a deterministic
+    // offset from the center), spread apart so no two pins stack: two venues
+    // a few hundred metres apart render on top of each other at this zoom
+    // (see the web map — same helper, same 46px rule, derived here from the
+    // region deltas and the screen size). A no-op for well-separated pins.
+    const markerPositions = useMemo(() => {
+        const raw: [number, number][] = activities.map((activity: any, idx: number) => {
+            const { dLat, dLng } = offsetFor(activity.id || `idx-${idx}`, 0.005);
+            return [
+                activity.latitude ?? initialLat + dLat,
+                activity.longitude ?? initialLng + dLng,
+            ];
+        });
+        if (raw.length < 2) return raw;
+        const { width, height } = Dimensions.get('window');
+        const latMpp = (LATITUDE_DELTA * 111320) / Math.max(height, 1);
+        const lngMpp = (LONGITUDE_DELTA * 111320 * Math.cos((initialLat * Math.PI) / 180)) / Math.max(width, 1);
+        const mpp = Math.max(latMpp, lngMpp);
+        return spreadPositions(raw, 46 * mpp);
+    }, [activities, initialLat, initialLng]);
+
     return (
         <MapView
             key={`${initialLat}-${initialLng}`}
@@ -34,8 +61,8 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
             initialRegion={{
                 latitude: initialLat,
                 longitude: initialLng,
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
+                latitudeDelta: LATITUDE_DELTA,
+                longitudeDelta: LONGITUDE_DELTA,
             }}
             userInterfaceStyle="light"
             showsUserLocation={true}
@@ -44,17 +71,14 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
             onPress={onMapPress}
         >
             {activities.map((activity: any, idx: number) => {
-                // Deterministic fallback position (stable per activity id),
-                // so pins never jump around between renders.
-                const { dLat, dLng } = offsetFor(activity.id || `idx-${idx}`, 0.005);
-                const lat = activity.latitude ?? initialLat + dLat;
-                const lng = activity.longitude ?? initialLng + dLng;
+                const pos = markerPositions[idx];
+                if (!pos) return null;
                 return (
                     <Marker
                         key={activity.id || idx}
                         coordinate={{
-                            latitude: lat,
-                            longitude: lng,
+                            latitude: pos[0],
+                            longitude: pos[1],
                         }}
                         onPress={() => onPinPress(activity.id)}
                     >
