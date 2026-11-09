@@ -86,13 +86,28 @@ function MapResizer() {
 // after MapResizer's invalidateSize calls, so the fit is computed against
 // the settled container size. Capped at zoom 14 so a tight cluster of pins
 // doesn't zoom all the way in.
+//
+// The map is full-bleed, but the bottom sheet covers the lower ~45% of the
+// screen on load (its snap point is 55% of screen height) and the floating
+// header occupies the top ~110px. A uniform padding fits the markers into
+// the whole container, which puts the southern pins behind the sheet. So
+// the bottom padding is half the container height (measured live from the
+// map, not a fixed pixel guess) and the top padding clears the header —
+// the markers land in the visible band only.
 function MapFitter({ positions }: { positions: [number, number][] }) {
     const map = useMap();
     const key = positions.map((p) => p.join(',')).join('|');
     useEffect(() => {
         if (positions.length === 0) return;
         const bounds = L.latLngBounds(positions);
-        const fit = () => map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14 });
+        const fit = () => {
+            const size = map.getSize();
+            map.fitBounds(bounds, {
+                paddingTopLeft: L.point(48, 110),
+                paddingBottomRight: L.point(48, Math.round(size.y * 0.5)),
+                maxZoom: 14,
+            });
+        };
         const t1 = setTimeout(fit, 150);
         const t2 = setTimeout(fit, 650);
         return () => {
