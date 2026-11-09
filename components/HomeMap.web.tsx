@@ -106,7 +106,7 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
                 <MapResizer />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                    url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
 
                 {activities.map((activity, idx) => {

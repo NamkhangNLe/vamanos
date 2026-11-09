@@ -138,8 +138,8 @@ export default function ActivityMap({ activity, participants, userLocation }: Ac
             >
                 <MapResizer />
                 <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
 
                 {/* Destination pin */}
