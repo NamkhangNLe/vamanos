@@ -3,6 +3,13 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
+// Demo mode (no Supabase configured): the GitHub Pages demo is open by
+// construction. There are no accounts, no sessions, and no waitlist wall —
+// the root route shows the squad map with seeded demo data. The guard below
+// treats demo mode as full access, so the demo can never bounce an
+// unauthenticated visitor to /auth, whatever order the effects fire in.
+const DEMO_MODE = !isSupabaseConfigured || !supabase;
+
 export default function RootLayout() {
   const [authed, setAuthed] = useState(false);
   const [initialized, setInitialized] = useState(false);
@@ -14,19 +21,19 @@ export default function RootLayout() {
     let subscription: { unsubscribe: () => void } | null = null;
 
     async function setup() {
-      // Local mode (no Supabase configured): no accounts, straight in.
-      if (!isSupabaseConfigured || !supabase) {
+      // Local/demo mode (no Supabase configured): no accounts, straight in.
+      if (DEMO_MODE) {
         setAuthed(true);
         setInitialized(true);
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
+      const { data } = await supabase!.auth.getSession();
       const bypass = await AsyncStorage.getItem('vamanos_waitlist_bypassed');
       setAuthed(!!data.session || bypass === 'true');
       setInitialized(true);
 
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: listener } = supabase!.auth.onAuthStateChange((_event, session) => {
         setAuthed(!!session);
       });
       subscription = listener.subscription;
@@ -44,7 +51,7 @@ export default function RootLayout() {
 
     async function evaluateNavigation() {
       const bypass = await AsyncStorage.getItem('vamanos_waitlist_bypassed');
-      const hasAccess = authed || bypass === 'true';
+      const hasAccess = DEMO_MODE || authed || bypass === 'true';
       const inAuthGroup = segments[0] === 'auth';
 
       if (!hasAccess && !inAuthGroup) {

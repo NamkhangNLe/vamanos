@@ -1,7 +1,7 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import React from 'react';
-import { MapContainer, Marker, TileLayer } from 'react-leaflet';
+import React, { useEffect } from 'react';
+import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
 import { StyleSheet, View } from 'react-native';
 import { offsetFor } from '../lib/geo';
 
@@ -60,6 +60,27 @@ const createUserDotIcon = () => {
     });
 };
 
+// Leaflet sizes itself once at mount. If the container is still settling
+// (fonts loading, layout shifts, the bottom sheet animating in), the map
+// can end up grey or with tiles/markers placed for the wrong viewport —
+// the classic blank-Leaflet-map failure. Re-measure shortly after mount
+// and on every window resize so the tiles always land where they belong.
+function MapResizer() {
+    const map = useMap();
+    useEffect(() => {
+        const t1 = setTimeout(() => map.invalidateSize(), 100);
+        const t2 = setTimeout(() => map.invalidateSize(), 600);
+        const onResize = () => map.invalidateSize();
+        window.addEventListener('resize', onResize);
+        return () => {
+            clearTimeout(t1);
+            clearTimeout(t2);
+            window.removeEventListener('resize', onResize);
+        };
+    }, [map]);
+    return null;
+}
+
 // Web version - Uses react-leaflet and OpenStreetMap tiles (FREE, NO API KEY needed)
 export default function HomeMap({ activities, userLocation, onPinPress, onMapPress }: HomeMapProps) {
     const initialLat = userLocation?.latitude || 34.0522;
@@ -82,6 +103,7 @@ export default function HomeMap({ activities, userLocation, onPinPress, onMapPre
                 scrollWheelZoom={true}
                 style={{ height: '100%', width: '100%' }}
             >
+                <MapResizer />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"

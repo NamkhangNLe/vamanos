@@ -1,7 +1,7 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import React from 'react';
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import React, { useEffect } from 'react';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import { StyleSheet, View } from 'react-native';
 import { offsetFor } from '../lib/geo';
 
@@ -9,6 +9,27 @@ export interface ActivityMapProps {
     activity: any;
     participants: any[];
     userLocation?: { latitude: number, longitude: number } | null;
+}
+
+// Leaflet sizes itself once at mount. If the container is still settling
+// (fonts loading, layout shifts), the map can end up grey or with
+// tiles/markers placed for the wrong viewport — the classic
+// blank-Leaflet-map failure. Re-measure shortly after mount and on
+// every window resize so the tiles always land where they belong.
+function MapResizer() {
+    const map = useMap();
+    useEffect(() => {
+        const t1 = setTimeout(() => map.invalidateSize(), 100);
+        const t2 = setTimeout(() => map.invalidateSize(), 600);
+        const onResize = () => map.invalidateSize();
+        window.addEventListener('resize', onResize);
+        return () => {
+            clearTimeout(t1);
+            clearTimeout(t2);
+            window.removeEventListener('resize', onResize);
+        };
+    }, [map]);
+    return null;
 }
 
 const FRIEND_COLORS = ['#007AFF', '#34C759', '#FF9500', '#AF52DE', '#FF3B30', '#5AC8FA'];
@@ -115,6 +136,7 @@ export default function ActivityMap({ activity, participants, userLocation }: Ac
                 scrollWheelZoom={true}
                 style={{ height: '100%', width: '100%' }}
             >
+                <MapResizer />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
